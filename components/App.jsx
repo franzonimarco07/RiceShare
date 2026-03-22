@@ -19,12 +19,13 @@ const C = {
   string:  "#b5a07a",
   fn:      "#7a9a7a",
   kw:      "#7088a0",
+  gold:    "#C9933A",
   mono:    "'IBM Plex Mono','Fira Code','Courier New',monospace",
   display: "'Syne','DM Sans',sans-serif",
 };
 
 const GUTTER = 52;
-const LINE_H = 22;   /* px per line — everything snaps to this grid */
+const LINE_H = 22;
 
 /* ── DATA ───────────────────────────────────────────────────────── */
 const RICES = [
@@ -50,6 +51,20 @@ html,body{background:#141414;color:#a8a8a4;font-family:'IBM Plex Mono',monospace
 @keyframes fadeUp {from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn {from{opacity:0}to{opacity:1}}
 @keyframes slideR{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.badge-founder {
+  background: linear-gradient(90deg, #7a5a1a, #C9933A, #f0d080, #C9933A, #7a5a1a);
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  border: 1px solid #C9933A55 !important;
+  box-shadow: 0 0 8px #C9933A18;
+}
 .card:hover{background:#1e1e1e!important;border-color:#2a2a2a!important;}
 .card:hover .ct{color:#f2f2f0!important;}
 .row:hover{background:#181818!important;}
@@ -58,21 +73,29 @@ html,body{background:#141414;color:#a8a8a4;font-family:'IBM Plex Mono',monospace
 .bg:hover{border-color:#444!important;color:#a0a09c!important;}
 .tb:hover{color:#d0d0cc!important;}
 input::placeholder{color:#282828;} textarea::placeholder{color:#2e2e2e;}
-
-/* ── RESPONSIVE ── */
-
 `;
 
-/* ── THE CONTINUOUS GUTTER ───────────────────────────────────────── */
-/*
-  Architecture:
-  - The page is split into two columns: a fixed-width gutter on the left,
-    and the content area on the right.
-  - The gutter is a single absolutely-positioned element that spans
-    the full height of the page, rendering line numbers sequentially.
-  - Content sits in a flex row beside the gutter, never inside it.
-*/
+/* ── FOUNDER BADGE ───────────────────────────────────────────────── */
+function FounderBadge() {
+  return (
+    <span
+      className="badge-founder"
+      style={{
+        fontSize: 9,
+        padding: "2px 9px",
+        fontFamily: C.mono,
+        letterSpacing: "0.08em",
+        display: "inline-block",
+        textTransform: "lowercase",
+        userSelect: "none",
+      }}
+    >
+      founder
+    </span>
+  );
+}
 
+/* ── PAGE SHELL ──────────────────────────────────────────────────── */
 function PageShell({ children }) {
   const contentRef = useRef(null);
   const [lines, setLines] = useState(40);
@@ -91,7 +114,6 @@ function PageShell({ children }) {
 
   return (
     <div style={{ display: "flex" }}>
-      {/* gutter */}
       <div style={{
         width: GUTTER, flexShrink: 0,
         background: C.gutter,
@@ -109,7 +131,6 @@ function PageShell({ children }) {
           </div>
         ))}
       </div>
-      {/* content */}
       <div ref={contentRef} style={{ flex: 1, minWidth: 0 }}>
         {children}
       </div>
@@ -239,8 +260,6 @@ function DetailPage({ rice, onBack, onProfile }) {
 
   return (
     <div style={{ padding:"32px 32px 48px", animation:"slideR .2s ease" }}>
-
-      {/* breadcrumb */}
       <div style={{ fontSize:11, color:C.gray2, marginBottom:28, display:"flex", gap:6, alignItems:"center" }}>
         <span onClick={onBack} style={{ color:C.fn, cursor:"pointer" }}
           onMouseEnter={e=>e.currentTarget.style.opacity=".6"}
@@ -252,7 +271,6 @@ function DetailPage({ rice, onBack, onProfile }) {
         <span style={{ color:C.white }}>{rice.slug}</span>
       </div>
 
-      {/* title */}
       <div style={{ marginBottom:28, paddingBottom:28, borderBottom:`1px solid ${C.border}` }}>
         <div style={{ marginBottom:10 }}>
           <span style={{ fontFamily:C.display, fontSize:"clamp(28px,4vw,44px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em" }}>{rice.title}</span>
@@ -260,10 +278,7 @@ function DetailPage({ rice, onBack, onProfile }) {
         </div>
         <div style={{ fontFamily:C.mono, fontSize:12, color:C.gray2, marginBottom:16, lineHeight:1.8 }}>
           <span style={{ color:C.gray3 }}>by </span>
-          <span
-            onClick={onProfile}
-            style={{ color:C.fn, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}
-          >@{rice.author}</span>
+          <span onClick={onProfile} style={{ color:C.fn, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}>@{rice.author}</span>
           <span style={{ color:C.gray3, margin:"0 10px" }}>·</span>
           <span style={{ color:C.kw }}>{rice.wm}</span>
           <span style={{ color:C.gray3, margin:"0 10px" }}>·</span>
@@ -281,7 +296,6 @@ function DetailPage({ rice, onBack, onProfile }) {
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 240px", gap:24 }}>
         <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-          {/* preview */}
           <div>
             <div style={{ fontSize:10, color:C.gray2, fontStyle:"italic", marginBottom:10 }}>// desktop preview</div>
             <div style={{ border:`1px solid ${C.border}`, overflow:"hidden" }}>
@@ -297,7 +311,6 @@ function DetailPage({ rice, onBack, onProfile }) {
             </div>
           </div>
 
-          {/* tabs */}
           <div>
             <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:16 }}>
               {["install","script","files"].map(t=>(
@@ -372,14 +385,10 @@ function DetailPage({ rice, onBack, onProfile }) {
           </div>
         </div>
 
-        {/* sidebar */}
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
           <div style={{ border:`1px solid ${C.border}`, padding:16, background:C.bgDeep }}>
             <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:10 }}>// AUTHOR</div>
-            <div
-              onClick={onProfile}
-              style={{ fontSize:13, color:C.fn, marginBottom:2, fontFamily:C.mono, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}
-            >@{rice.author}</div>
+            <div onClick={onProfile} style={{ fontSize:13, color:C.fn, marginBottom:2, fontFamily:C.mono, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}>@{rice.author}</div>
             <div style={{ fontSize:10, color:C.gray3, marginBottom:12 }}>{RICES.filter(r=>r.author===rice.author).length} rice</div>
             <button className="bg" style={{ width:"100%", padding:"7px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .15s" }}>follow</button>
           </div>
@@ -433,40 +442,26 @@ function HomePage({ onSelect, onUpload }) {
     });
   }, []);
 
-const wms = ["all","hyprland","sway","i3wm","bspwm","openbox"];
-const filtered = rices.filter(r => {
-  const mf = wmFilter==="all" || r.wm===wmFilter;
-  const ms = !search || (r.title||"").toLowerCase().includes(search.toLowerCase()) || (r.author||r.slug||"").toLowerCase().includes(search.toLowerCase());
-  return mf && ms;
-});
+  const wms = ["all","hyprland","sway","i3wm","bspwm","openbox"];
+  const filtered = rices.filter(r => {
+    const mf = wmFilter==="all" || r.wm===wmFilter;
+    const ms = !search || (r.title||"").toLowerCase().includes(search.toLowerCase()) || (r.author||r.slug||"").toLowerCase().includes(search.toLowerCase());
+    return mf && ms;
+  });
 
   return (
     <div>
-      {/* ── HERO ── */}
       <div style={{ borderBottom:`1px solid ${C.border}` }}>
-        {/* comment strip */}
         <div style={{ padding:"10px 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep }}>
           <span style={{ fontSize:11, fontFamily:C.mono, color:C.comment, fontStyle:"italic" }}>
             <span style={{ color:"#242424" }}>// </span>linux rice gallery &amp; one-click installer — v1.0.0
           </span>
         </div>
-
-        {/* LOGO */}
         <div style={{ padding:"28px 32px 16px", borderBottom:`1px solid ${C.border}` }}>
-          <div style={{
-            fontFamily: C.display,
-            fontSize: "clamp(28px, 4vw, 48px)",
-            fontWeight: 900,
-            color: C.white,
-            letterSpacing: "-0.03em",
-            lineHeight: 1,
-            textTransform: "uppercase",
-          }}>
+          <div style={{ fontFamily:C.display, fontSize:"clamp(28px, 4vw, 48px)", fontWeight:900, color:C.white, letterSpacing:"-0.03em", lineHeight:1, textTransform:"uppercase" }}>
             RICESHARE
           </div>
         </div>
-
-        {/* tagline + stats + CTA */}
         <div style={{ padding:"24px 32px 36px", display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:20 }}>
           <div style={{ maxWidth:420 }}>
             <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:2, marginBottom:20 }}>
@@ -492,7 +487,6 @@ const filtered = rices.filter(r => {
         </div>
       </div>
 
-      {/* ── GALLERY TOOLBAR ── */}
       <div style={{ padding:"10px clamp(12px,3vw,32px)", borderBottom:`1px solid ${C.border}`, display:"flex", gap:8, alignItems:"center", background:C.bgDeep, flexWrap:"wrap" }}>
         <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, border:`1px solid ${C.border}`, padding:"7px 12px" }}>
           <span style={{ color:C.gray3, fontSize:11 }}>{">"}</span>
@@ -505,7 +499,6 @@ const filtered = rices.filter(r => {
         </div>
       </div>
 
-      {/* filter tabs */}
       <div style={{ padding:"0 32px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center" }}>
         {wms.map(f=>(
           <button key={f} className="tb" onClick={()=>setWmFilter(f)} style={{ padding:"9px 14px", background:"none", border:"none", borderBottom:wmFilter===f?`1px solid ${C.white}`:"1px solid transparent", color:wmFilter===f?C.white:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
@@ -516,7 +509,6 @@ const filtered = rices.filter(r => {
         <span style={{ fontSize:9, color:C.gray3 }}>{filtered.length} results</span>
       </div>
 
-      {/* cards */}
       <div style={{ padding:"24px 32px 48px" }}>
         {view==="grid" ? (
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
@@ -527,7 +519,7 @@ const filtered = rices.filter(r => {
         )}
         {filtered.length===0 && (
           <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
-            // no results for "{search||filter}"
+            // no results for "{search||wmFilter}"
           </div>
         )}
       </div>
@@ -562,30 +554,15 @@ function Navbar({ page, setPage, isLoggedIn, onLogout }) {
       <nav ref={navRef} style={{ borderBottom:`1px solid ${C.border}`, position:"sticky", top:0, zIndex:200, background:"rgba(20,20,20,0.97)", backdropFilter:"blur(10px)" }}>
         <div style={{ display:"flex", alignItems:"center", height:44 }}>
           {!isMobile && (
-            <div style={{
-              width:GUTTER, flexShrink:0, height:"100%",
-              background:C.gutter, borderRight:`1px solid ${C.border}`,
-              display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:14,
-            }}>
+            <div style={{ width:GUTTER, flexShrink:0, height:"100%", background:C.gutter, borderRight:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:14 }}>
               <div style={{ width:5, height:5, borderRadius:"50%", background:C.fn, opacity:.6 }}/>
             </div>
           )}
           <div style={{ flex:1, paddingLeft:isMobile?12:16, display:"flex", alignItems:"center", height:"100%" }}>
-            <button onClick={()=>{setPage("home");setMenuOpen(false);}} style={{
-              background:"none", border:"none", cursor:"pointer",
-              fontFamily:C.display, fontSize:isMobile?12:15, fontWeight:800,
-              color:C.white, letterSpacing:"-0.02em", textTransform:"uppercase",
-              padding:"0 12px 0 0", marginRight:8,
-              borderRight:`1px solid ${C.border}`, height:"100%",
-            }}>Riceshare</button>
+            <button onClick={()=>{setPage("home");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontFamily:C.display, fontSize:isMobile?12:15, fontWeight:800, color:C.white, letterSpacing:"-0.02em", textTransform:"uppercase", padding:"0 12px 0 0", marginRight:8, borderRight:`1px solid ${C.border}`, height:"100%" }}>Riceshare</button>
 
             {!isMobile && NAV_LINKS.map(([p,label])=>(
-              <button key={p} className="tb" onClick={()=>setPage(p)} style={{
-                padding:"0 12px", height:"100%", background:"none", border:"none",
-                borderBottom:page===p?`1px solid ${C.white}`:"1px solid transparent",
-                color:page===p?C.white:C.gray2, cursor:"pointer",
-                fontSize:11, fontFamily:C.mono, transition:"color .15s",
-              }}>{label}</button>
+              <button key={p} className="tb" onClick={()=>setPage(p)} style={{ padding:"0 12px", height:"100%", background:"none", border:"none", borderBottom:page===p?`1px solid ${C.white}`:"1px solid transparent", color:page===p?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"color .15s" }}>{label}</button>
             ))}
 
             <div style={{ flex:1 }}/>
@@ -596,34 +573,20 @@ function Navbar({ page, setPage, isLoggedIn, onLogout }) {
                 <button onClick={()=>signOut(()=>setPage("home"))} className="bg" style={{ padding:"4px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>logout</button>
               </div>
             ) : (
-            <button className="bs" onClick={()=>window.location.href='/sign-in'} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginRight:16 }}>login</button>
+              <button className="bs" onClick={()=>window.location.href='/sign-in'} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginRight:16 }}>login</button>
             ))}
 
             {isMobile && (
-              <button onClick={()=>setMenuOpen(o=>!o)} style={{
-                background:"none", border:`1px solid ${C.border}`,
-                color:C.gray2, cursor:"pointer", padding:"4px 10px",
-                fontFamily:C.mono, fontSize:15, marginRight:10, lineHeight:1,
-              }}>{menuOpen?"✕":"☰"}</button>
+              <button onClick={()=>setMenuOpen(o=>!o)} style={{ background:"none", border:`1px solid ${C.border}`, color:C.gray2, cursor:"pointer", padding:"4px 10px", fontFamily:C.mono, fontSize:15, marginRight:10, lineHeight:1 }}>{menuOpen?"✕":"☰"}</button>
             )}
           </div>
         </div>
       </nav>
 
       {isMobile && menuOpen && (
-        <div style={{
-          position:"fixed", top:44, left:0, right:0, zIndex:199,
-          background:"rgba(13,13,13,0.98)", borderBottom:`1px solid ${C.border}`,
-          flexDirection:"column", padding:"8px 0",
-          backdropFilter:"blur(10px)", display:"flex",
-        }}>
+        <div style={{ position:"fixed", top:44, left:0, right:0, zIndex:199, background:"rgba(13,13,13,0.98)", borderBottom:`1px solid ${C.border}`, flexDirection:"column", padding:"8px 0", backdropFilter:"blur(10px)", display:"flex" }}>
           {NAV_LINKS.map(([p,label])=>(
-            <button key={p} onClick={()=>{setPage(p);setMenuOpen(false);}} style={{
-              padding:"13px 20px", background:"none", border:"none",
-              borderLeft:page===p?`2px solid ${C.white}`:"2px solid transparent",
-              color:page===p?C.white:C.gray2,
-              cursor:"pointer", fontSize:14, fontFamily:C.mono, textAlign:"left",
-            }}>{label}</button>
+            <button key={p} onClick={()=>{setPage(p);setMenuOpen(false);}} style={{ padding:"13px 20px", background:"none", border:"none", borderLeft:page===p?`2px solid ${C.white}`:"2px solid transparent", color:page===p?C.white:C.gray2, cursor:"pointer", fontSize:14, fontFamily:C.mono, textAlign:"left" }}>{label}</button>
           ))}
           <div style={{ height:1, background:C.border, margin:"8px 0" }}/>
           {user ? (
@@ -640,9 +603,6 @@ function Navbar({ page, setPage, isLoggedIn, onLogout }) {
   );
 }
 
-
-
-
 /* ── DOCS PAGE ───────────────────────────────────────────────────── */
 function DocsPage() {
   const NAV = [
@@ -653,8 +613,7 @@ function DocsPage() {
     { id:"community",       label:"community",       n:"05" },
   ];
 
-  const [active, setActive]   = useState("getting-started");
-  const containerRef = useRef(null);
+  const [active, setActive] = useState("getting-started");
   const sectionRefs = {
     "getting-started": useRef(null),
     "upload-guide":    useRef(null),
@@ -671,7 +630,6 @@ function DocsPage() {
 
   useEffect(() => {
     const ids = NAV.map(n => n.id);
-
     const onScroll = () => {
       const scroller = document.getElementById("docs-scroll");
       if (!scroller) return;
@@ -684,14 +642,12 @@ function DocsPage() {
       }
       setActive(current);
     };
-
     const timer = setTimeout(() => {
       const scroller = document.getElementById("docs-scroll");
       if (!scroller) return;
       scroller.addEventListener("scroll", onScroll, { passive: true });
       onScroll();
     }, 100);
-
     return () => {
       clearTimeout(timer);
       const scroller = document.getElementById("docs-scroll");
@@ -700,47 +656,35 @@ function DocsPage() {
   }, []);
 
   const Block = ({ children }) => (
-    <div style={{ background:C.bgDeep, border:`1px solid ${C.border}`, padding:"14px 16px", marginBottom:12, fontFamily:C.mono, fontSize:11, lineHeight:1.9, color:C.gray2 }}>
-      {children}
-    </div>
+    <div style={{ background:C.bgDeep, border:`1px solid ${C.border}`, padding:"14px 16px", marginBottom:12, fontFamily:C.mono, fontSize:11, lineHeight:1.9, color:C.gray2 }}>{children}</div>
   );
-
   const Cmd = ({ children }) => (
     <div style={{ background:"#090909", border:`1px solid ${C.border}`, padding:"10px 14px", marginBottom:8, display:"flex", gap:8, alignItems:"center" }}>
       <span style={{ color:C.gray3, flexShrink:0 }}>$</span>
       <code style={{ fontFamily:C.mono, fontSize:11, color:C.gray1 }}>{children}</code>
     </div>
   );
-
   const Sec = ({ id, n, title, children }) => (
-    <div ref={sectionRefs[id]} id={id} data-section={id} style={{ marginBottom:48 }}>
-      <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8 }}>
-        // {String(n).padStart(2,"0")} — {id}
-      </div>
-      <div style={{ fontFamily:C.display, fontSize:"clamp(18px,2.5vw,26px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em", marginBottom:20, paddingBottom:12, borderBottom:`1px solid ${C.border}` }}>
-        {title}
-      </div>
+    <div ref={sectionRefs[id]} id={id} style={{ marginBottom:48 }}>
+      <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8 }}>// {String(n).padStart(2,"0")} — {id}</div>
+      <div style={{ fontFamily:C.display, fontSize:"clamp(18px,2.5vw,26px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em", marginBottom:20, paddingBottom:12, borderBottom:`1px solid ${C.border}` }}>{title}</div>
       {children}
     </div>
   );
-
   const P = ({ children }) => (
     <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:2, marginBottom:14 }}>
       <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>{children}
     </p>
   );
-
   const KV = ({ k, v }) => (
     <div style={{ display:"flex", gap:0, marginBottom:6 }}>
       <span style={{ fontSize:11, fontFamily:C.mono, color:C.kw, minWidth:160 }}>{k}</span>
       <span style={{ fontSize:11, fontFamily:C.mono, color:C.gray2 }}>{v}</span>
     </div>
   );
-
   const Badge = ({ label, color }) => (
     <span style={{ fontSize:9, border:`1px solid ${color}55`, color, padding:"1px 8px", fontFamily:C.mono, marginRight:6 }}>{label}</span>
   );
-
   const ApiRow = ({ method, path, desc }) => (
     <div style={{ display:"flex", gap:16, alignItems:"flex-start", padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
       <span style={{ fontSize:9, fontFamily:C.mono, padding:"2px 8px", border:`1px solid ${method==="GET"?C.fn+"55":C.kw+"55"}`, color:method==="GET"?C.fn:C.kw, flexShrink:0, minWidth:40, textAlign:"center" }}>{method}</span>
@@ -755,43 +699,18 @@ function DocsPage() {
 
   return (
     <div style={{ height:"100%" }}>
-
-      {/* ── LEFT NAV: fixed alongside navbar/footer ── */}
-      <div style={{
-        position:"fixed",
-        top: NAVBAR_H, bottom: FOOTER_H,
-        left: 0, width: NAV_W,
-        borderRight:`1px solid ${C.border}`,
-        padding:"28px 0",
-        overflowY:"auto",
-        background: C.bg,
-        zIndex:100,
-      }}>
+      <div style={{ position:"fixed", top:NAVBAR_H, bottom:FOOTER_H, left:0, width:NAV_W, borderRight:`1px solid ${C.border}`, padding:"28px 0", overflowY:"auto", background:C.bg, zIndex:100 }}>
         <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", padding:"0 20px", marginBottom:20 }}>// DOCS</div>
         {NAV.map(n => {
           const isActive = active === n.id;
           const isPast   = NAV.findIndex(x => x.id === active) > NAV.findIndex(x => x.id === n.id);
           return (
-            <button key={n.id} onClick={() => scrollTo(n.id)} style={{
-              display:"flex", alignItems:"center", gap:10,
-              width:"100%", padding:"8px 20px",
-              background:"none", border:"none",
-              borderLeft: isActive ? `1px solid ${C.white}` : "1px solid transparent",
-              cursor:"pointer", fontFamily:C.mono,
-              transition:"border-color .2s",
-            }}>
-              <span style={{ fontSize:9, minWidth:16, color: isPast ? C.fn : isActive ? C.white : C.gray3, transition:"color .2s" }}>
-                {isPast ? "✓" : n.n}
-              </span>
-              <span style={{
-                fontSize:11,
-                color: isActive ? C.white : isPast ? C.gray2 : C.gray3,
-                transition:"color .2s",
-              }}>{n.label}</span>
+            <button key={n.id} onClick={() => scrollTo(n.id)} style={{ display:"flex", alignItems:"center", gap:10, width:"100%", padding:"8px 20px", background:"none", border:"none", borderLeft:isActive?`1px solid ${C.white}`:"1px solid transparent", cursor:"pointer", fontFamily:C.mono, transition:"border-color .2s" }}>
+              <span style={{ fontSize:9, minWidth:16, color:isPast?C.fn:isActive?C.white:C.gray3, transition:"color .2s" }}>{isPast?"✓":n.n}</span>
+              <span style={{ fontSize:11, color:isActive?C.white:isPast?C.gray2:C.gray3, transition:"color .2s" }}>{n.label}</span>
             </button>
           );
         })}
-
         <div style={{ margin:"20px 20px 0", height:1, background:C.border }}/>
         <div style={{ padding:"14px 20px 0" }}>
           <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:8 }}>VERSIONE</div>
@@ -800,9 +719,7 @@ function DocsPage() {
         </div>
       </div>
 
-      {/* ── SCROLLABLE CONTENT ── */}
       <div id="docs-scroll" style={{ position:"absolute", top:0, bottom:0, left:NAV_W, right:0, overflowY:"auto", padding:"32px 40px 60px" }}>
-
         <Sec id="getting-started" n={1} title="Getting started">
           <P>Riceshare è una piattaforma per condividere e installare configurazioni Linux. Un rice è un insieme di dotfile che definisce l'aspetto e il comportamento del tuo desktop.</P>
           <P>Per installare qualsiasi rice dalla gallery, copia il comando dalla pagina del rice e incollalo nel tuo terminale.</P>
@@ -821,7 +738,8 @@ function DocsPage() {
             <div style={{ marginBottom:6 }}><Badge label="member" color={C.gray2}/>account nuovo — rice in revisione</div>
             <div style={{ marginBottom:6 }}><Badge label="trusted" color={C.kw}/>email verificata + 1 rice approvato</div>
             <div style={{ marginBottom:6 }}><Badge label="senior" color={C.fn}/>5 rice approvati + 100 installs</div>
-            <div><Badge label="staff" color={C.string}/>50 segnalazioni corrette</div>
+            <div style={{ marginBottom:6 }}><Badge label="staff" color={C.string}/>50 segnalazioni corrette</div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}><FounderBadge/>membro fondatore del progetto</div>
           </Block>
         </Sec>
 
@@ -830,17 +748,16 @@ function DocsPage() {
           <Block>
             <div style={{ color:C.gray3, fontStyle:"italic", marginBottom:8 }}>// struttura consigliata</div>
             {["dotfiles/","├── hypr/           ← config window manager","├── waybar/         ← status bar","│   ├── config","│   └── style.css","├── kitty/          ← terminale","wallpaper.png",".zshrc","install.sh          ← generato automaticamente","meta.json           ← generato automaticamente"].map((l,i)=>(
-              <div key={i} style={{ color: l.includes("←") ? C.gray3 : l.endsWith("/") ? C.fn : C.gray2, fontStyle: l.includes("←")?"italic":"normal" }}>{l}</div>
+              <div key={i} style={{ color:l.includes("←")?C.gray3:l.endsWith("/")?C.fn:C.gray2, fontStyle:l.includes("←")?"italic":"normal" }}>{l}</div>
             ))}
           </Block>
           <P>Il file <code style={{color:C.fn}}>meta.json</code> e lo script <code style={{color:C.fn}}>install.sh</code> vengono generati automaticamente. Non devi scriverli a mano.</P>
           <Block>
             <div style={{ color:C.gray3, fontStyle:"italic", marginBottom:8 }}>// limiti per trust level</div>
-            <KV k="member"        v="upload bloccato — verifica email"/>
-            <KV k="trusted"        v="max 2 upload/giorno · in revisione"/>
-            <KV k="senior" v="illimitato · pubblicazione diretta"/>
+            <KV k="member"  v="upload bloccato — verifica email"/>
+            <KV k="trusted" v="max 2 upload/giorno · in revisione"/>
+            <KV k="senior"  v="illimitato · pubblicazione diretta"/>
           </Block>
-          <P>Dimensione massima per rice: <code style={{color:C.string}}>50 MB</code>. Estensioni non permesse: <code style={{color:C.string}}>.exe .bin</code> nella root.</P>
         </Sec>
 
         <Sec id="install-system" n={3} title="Come funziona l'install system">
@@ -893,7 +810,7 @@ function DocsPage() {
           <Block>
             <div style={{ color:C.gray3, fontStyle:"italic", marginBottom:8 }}>// esempio risposta</div>
             {[`{`,`  "slug":     "catppuccin-mocha-hypr",`,`  "author":   "velvet_void",`,`  "wm":       "hyprland",`,`  "likes":    847,`,`  "installs": 2341,`,`  "deps":     ["hyprland","waybar","kitty"]`,`}`].map((l,i)=>(
-              <div key={i} style={{ color: l.includes(":")?C.gray2:C.gray3 }}>{l}</div>
+              <div key={i} style={{ color:l.includes(":")?C.gray2:C.gray3 }}>{l}</div>
             ))}
           </Block>
         </Sec>
@@ -919,52 +836,33 @@ function DocsPage() {
             <div style={{ marginBottom:8 }}><Badge label="early.adopter" color={C.string}/>primi 100 utenti registrati</div>
             <div style={{ marginBottom:8 }}><Badge label="core.dev" color={C.kw}/>contributore al codice</div>
             <div style={{ marginBottom:8 }}><Badge label="featured" color={C.fn}/>rice in evidenza in homepage</div>
-            <div><Badge label="verified" color={C.white}/>identità verificata dal team</div>
+            <div style={{ marginBottom:8 }}><Badge label="verified" color={C.white}/>identità verificata dal team</div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}><FounderBadge/>membro fondatore del progetto</div>
           </Block>
         </Sec>
-
       </div>
     </div>
   );
 }
 
-/* ── UPLOAD GATE (non loggato) ───────────────────────────────────── */
+/* ── UPLOAD GATE ─────────────────────────────────────────────────── */
 function UploadGate({ onLogin }) {
   return (
     <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"32px", overflow:"hidden" }}>
       <div style={{ maxWidth:400, width:"100%", textAlign:"center" }}>
-        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>
-          // accesso richiesto
-        </div>
-        <div style={{ fontFamily:C.display, fontSize:"clamp(22px,3vw,32px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em", marginBottom:16 }}>
-          Devi essere registrato
-        </div>
+        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>// accesso richiesto</div>
+        <div style={{ fontFamily:C.display, fontSize:"clamp(22px,3vw,32px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em", marginBottom:16 }}>Devi essere registrato</div>
         <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, padding:"20px", marginBottom:24 }}>
           <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:2, textAlign:"left" }}>
-            <div style={{ marginBottom:8 }}>
-              <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-              per caricare un rice su Riceshare devi avere un account.
-            </div>
-            <div style={{ marginBottom:8 }}>
-              <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-              la registrazione è gratuita e richiede solo un'email valida.
-            </div>
-            <div>
-              <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-              dopo la verifica email ricevi il badge{" "}
-              <span style={{ fontSize:9, border:`1px solid ${C.gray2}55`, color:C.gray2, padding:"1px 7px", fontFamily:C.mono }}>member</span>
-              {" "}e puoi iniziare a caricare.
-            </div>
+            <div style={{ marginBottom:8 }}><span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>per caricare un rice su Riceshare devi avere un account.</div>
+            <div style={{ marginBottom:8 }}><span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>la registrazione è gratuita e richiede solo un'email valida.</div>
+            <div><span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>dopo la verifica email ricevi il badge{" "}<span style={{ fontSize:9, border:`1px solid ${C.gray2}55`, color:C.gray2, padding:"1px 7px", fontFamily:C.mono }}>member</span>{" "}e puoi iniziare a caricare.</div>
           </div>
         </div>
         <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-          <button className="bs" onClick={onLogin} style={{ padding:"10px 28px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s" }}>
-            accedi / registrati →
-          </button>
+          <button className="bs" onClick={onLogin} style={{ padding:"10px 28px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s" }}>accedi / registrati →</button>
         </div>
-        <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginTop:16 }}>
-          // hai già un account? clicca il pulsante qui sopra
-        </div>
+        <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginTop:16 }}>// hai già un account? clicca il pulsante qui sopra</div>
       </div>
     </div>
   );
@@ -972,14 +870,13 @@ function UploadGate({ onLogin }) {
 
 /* ── AUTH PAGE ───────────────────────────────────────────────────── */
 function AuthPage({ onBack, onLogin }) {
-  const [mode, setMode]         = useState("login"); // "login" | "signup"
-  const [step, setStep]         = useState(0);        // signup: 0=creds, 1=verify
+  const [mode, setMode]         = useState("login");
+  const [step, setStep]         = useState(0);
   const [form, setForm]         = useState({ email:"", password:"", confirm:"", username:"" });
   const [errors, setErrors]     = useState({});
   const [loading, setLoading]   = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [showPwd, setShowPwd]   = useState(false);
-  const [done, setDone]         = useState(false);
 
   const set = (k, v) => { setForm(f => ({...f, [k]:v})); setErrors(e => ({...e, [k]:null})); };
 
@@ -1015,11 +912,8 @@ function AuthPage({ onBack, onLogin }) {
   };
 
   const inputStyle = (k) => ({
-    width:"100%", background:C.bgDeep,
-    border:`1px solid ${errors[k] ? "#a05858" : C.border}`,
-    color:C.white, padding:"10px 14px",
-    fontSize:12, fontFamily:C.mono, outline:"none",
-    transition:"border-color .15s",
+    width:"100%", background:C.bgDeep, border:`1px solid ${errors[k]?"#a05858":C.border}`,
+    color:C.white, padding:"10px 14px", fontSize:12, fontFamily:C.mono, outline:"none", transition:"border-color .15s",
   });
 
   const Label = ({ k, label }) => (
@@ -1031,15 +925,14 @@ function AuthPage({ onBack, onLogin }) {
     </div>
   );
 
-  /* strength meter */
   const pwdStrength = (() => {
     const p = form.password;
     if (!p) return 0;
     let s = 0;
-    if (p.length >= 8)               s++;
-    if (/[A-Z]/.test(p))             s++;
-    if (/[0-9]/.test(p))             s++;
-    if (/[^a-zA-Z0-9]/.test(p))      s++;
+    if (p.length >= 8)          s++;
+    if (/[A-Z]/.test(p))        s++;
+    if (/[0-9]/.test(p))        s++;
+    if (/[^a-zA-Z0-9]/.test(p)) s++;
     return s;
   })();
   const strengthLabel = ["","debole","media","buona","ottima"][pwdStrength];
@@ -1048,44 +941,32 @@ function AuthPage({ onBack, onLogin }) {
   return (
     <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"32px", overflow:"hidden" }}>
       <div style={{ width:"100%", maxWidth:400 }}>
-
-        {/* back */}
         <button onClick={onBack} style={{ background:"none", border:"none", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:28, padding:0, display:"flex", alignItems:"center", gap:6 }}
           onMouseEnter={e=>e.currentTarget.style.color=C.white}
           onMouseLeave={e=>e.currentTarget.style.color=C.gray2}
         >← torna alla gallery</button>
 
-        {/* ── VERIFY EMAIL STEP ── */}
         {mode==="signup" && step===1 && (
           <div style={{ animation:"fadeIn .3s ease" }}>
             <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>// verifica email</div>
             <div style={{ fontFamily:C.display, fontSize:28, fontWeight:800, color:C.white, letterSpacing:"-0.025em", marginBottom:20 }}>Controlla la tua email</div>
             <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, padding:"20px", marginBottom:20 }}>
               <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:2 }}>
-                <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-                abbiamo inviato un link di verifica a<br/>
+                <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>abbiamo inviato un link di verifica a<br/>
                 <span style={{ color:C.white }}>{form.email}</span>
               </div>
             </div>
-            <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, lineHeight:2, marginBottom:20 }}>
-              <span style={{ fontStyle:"italic" }}>// </span>
-              dopo la verifica potrai accedere e caricare il tuo primo rice come <span style={{ color:C.fn }}>member</span>.
-            </div>
-            <button onClick={onBack} className="bs" style={{ width:"100%", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s" }}>
-              torna alla home →
-            </button>
+            <button onClick={onBack} className="bs" style={{ width:"100%", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s" }}>torna alla home →</button>
           </div>
         )}
 
-        {/* ── LOGIN / SIGNUP FORM ── */}
         {!(mode==="signup" && step===1) && (
           <div style={{ animation:"fadeIn .25s ease" }}>
-            {/* header */}
             <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>
-              {mode==="login" ? "// accedi al tuo account" : "// crea il tuo account"}
+              {mode==="login"?"// accedi al tuo account":"// crea il tuo account"}
             </div>
             <div style={{ fontFamily:C.display, fontSize:28, fontWeight:800, color:C.white, letterSpacing:"-0.025em", marginBottom:8 }}>
-              {mode==="login" ? "Login" : "Registrati"}
+              {mode==="login"?"Login":"Registrati"}
             </div>
             <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, marginBottom:28 }}>
               {mode==="login"
@@ -1094,16 +975,12 @@ function AuthPage({ onBack, onLogin }) {
               }
             </div>
 
-            {/* username (signup only) */}
             {mode==="signup" && (
               <div>
                 <Label k="username" label="USERNAME"/>
                 <div style={{ position:"relative", marginBottom:errors.username?6:14 }}>
                   <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", color:C.gray3, fontSize:12, fontFamily:C.mono, pointerEvents:"none" }}>@</span>
-                  <input
-                    value={form.username}
-                    onChange={e=>set("username", e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""))}
-                    placeholder="il_tuo_nome"
+                  <input value={form.username} onChange={e=>set("username",e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,""))} placeholder="il_tuo_nome"
                     style={{...inputStyle("username"), paddingLeft:28}}
                     onFocus={e=>e.target.style.borderColor=errors.username?"#a05858":C.white}
                     onBlur={e=>e.target.style.borderColor=errors.username?"#a05858":C.border}
@@ -1113,14 +990,9 @@ function AuthPage({ onBack, onLogin }) {
               </div>
             )}
 
-            {/* email */}
             <div>
               <Label k="email" label="EMAIL"/>
-              <input
-                value={form.email}
-                onChange={e=>set("email", e.target.value)}
-                placeholder="nome@esempio.com"
-                type="email"
+              <input value={form.email} onChange={e=>set("email",e.target.value)} placeholder="nome@esempio.com" type="email"
                 style={{...inputStyle("email"), marginBottom:errors.email?6:14}}
                 onFocus={e=>e.target.style.borderColor=errors.email?"#a05858":C.white}
                 onBlur={e=>e.target.style.borderColor=errors.email?"#a05858":C.border}
@@ -1128,50 +1000,34 @@ function AuthPage({ onBack, onLogin }) {
               {errors.email && <div style={{ fontSize:10, color:"#a05858", fontFamily:C.mono, fontStyle:"italic", marginBottom:14 }}>{errors.email}</div>}
             </div>
 
-            {/* password */}
             <div>
               <Label k="password" label="PASSWORD"/>
               <div style={{ position:"relative", marginBottom:errors.password?6:mode==="signup"?6:14 }}>
-                <input
-                  value={form.password}
-                  onChange={e=>set("password", e.target.value)}
-                  onKeyDown={e=>setCapsLock(e.getModifierState?.("CapsLock"))}
-                  placeholder={mode==="signup" ? "minimo 8 caratteri" : "••••••••"}
-                  type={showPwd ? "text" : "password"}
+                <input value={form.password} onChange={e=>set("password",e.target.value)} onKeyDown={e=>setCapsLock(e.getModifierState?.("CapsLock"))}
+                  placeholder={mode==="signup"?"minimo 8 caratteri":"••••••••"} type={showPwd?"text":"password"}
                   style={{...inputStyle("password"), paddingRight:44}}
                   onFocus={e=>e.target.style.borderColor=errors.password?"#a05858":C.white}
                   onBlur={e=>e.target.style.borderColor=errors.password?"#a05858":C.border}
                 />
-                <button onClick={()=>setShowPwd(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, padding:0 }}>
-                  {showPwd?"hide":"show"}
-                </button>
+                <button onClick={()=>setShowPwd(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, padding:0 }}>{showPwd?"hide":"show"}</button>
               </div>
               {errors.password && <div style={{ fontSize:10, color:"#a05858", fontFamily:C.mono, fontStyle:"italic", marginBottom:6 }}>{errors.password}</div>}
-
-              {/* strength meter (signup only) */}
               {mode==="signup" && form.password && (
                 <div style={{ marginBottom:14 }}>
                   <div style={{ display:"flex", gap:3, marginBottom:4 }}>
                     {[1,2,3,4].map(i=>(
-                      <div key={i} style={{ flex:1, height:2, background: i<=pwdStrength ? strengthColor : C.border, transition:"background .2s" }}/>
+                      <div key={i} style={{ flex:1, height:2, background:i<=pwdStrength?strengthColor:C.border, transition:"background .2s" }}/>
                     ))}
                   </div>
-                  <div style={{ fontSize:9, color:strengthColor, fontFamily:C.mono, fontStyle:"italic" }}>
-                    {strengthLabel && `// password ${strengthLabel}`}
-                  </div>
+                  <div style={{ fontSize:9, color:strengthColor, fontFamily:C.mono, fontStyle:"italic" }}>{strengthLabel&&`// password ${strengthLabel}`}</div>
                 </div>
               )}
             </div>
 
-            {/* confirm password (signup only) */}
             {mode==="signup" && (
               <div>
                 <Label k="confirm" label="CONFERMA PASSWORD"/>
-                <input
-                  value={form.confirm}
-                  onChange={e=>set("confirm", e.target.value)}
-                  placeholder="ripeti la password"
-                  type={showPwd ? "text" : "password"}
+                <input value={form.confirm} onChange={e=>set("confirm",e.target.value)} placeholder="ripeti la password" type={showPwd?"text":"password"}
                   style={{...inputStyle("confirm"), marginBottom:errors.confirm?6:14}}
                   onFocus={e=>e.target.style.borderColor=errors.confirm?"#a05858":C.white}
                   onBlur={e=>e.target.style.borderColor=errors.confirm?"#a05858":C.border}
@@ -1180,43 +1036,24 @@ function AuthPage({ onBack, onLogin }) {
               </div>
             )}
 
-            {/* capslock warning */}
-            {capsLock && (
-              <div style={{ fontSize:10, color:C.string, fontFamily:C.mono, fontStyle:"italic", marginBottom:14 }}>
-                // caps lock attivo
-              </div>
-            )}
+            {capsLock && <div style={{ fontSize:10, color:C.string, fontFamily:C.mono, fontStyle:"italic", marginBottom:14 }}>// caps lock attivo</div>}
 
-            {/* submit */}
-            <button
-              onClick={mode==="login" ? handleLogin : handleSignup}
-              className="bs"
-              style={{ width:"100%", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:loading?"default":"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s", marginBottom:14, opacity:loading?0.6:1 }}
-            >
-              {loading
-                ? <span style={{ fontStyle:"italic", color:C.gray2 }}>// autenticazione in corso...</span>
-                : mode==="login" ? "accedi →" : "crea account →"
-              }
+            <button onClick={mode==="login"?handleLogin:handleSignup} className="bs"
+              style={{ width:"100%", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:loading?"default":"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s", marginBottom:14, opacity:loading?0.6:1 }}>
+              {loading ? <span style={{ fontStyle:"italic", color:C.gray2 }}>// autenticazione in corso...</span> : mode==="login"?"accedi →":"crea account →"}
             </button>
 
-            {/* divider */}
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-              <div style={{ flex:1, height:1, background:C.border }}/>
-              <span style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>oppure</span>
-              <div style={{ flex:1, height:1, background:C.border }}/>
+              <div style={{ flex:1, height:1, background:C.border }}/><span style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>oppure</span><div style={{ flex:1, height:1, background:C.border }}/>
             </div>
 
-            {/* github oauth */}
             <button className="bg" style={{ width:"100%", padding:"11px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s", display:"flex", alignItems:"center", justifyContent:"center", gap:10, marginBottom:8 }}>
-              <span style={{ fontSize:14 }}>⌥</span>
-              continua con GitHub
+              <span style={{ fontSize:14 }}>⌥</span>continua con GitHub
             </button>
             <button className="bg" style={{ width:"100%", padding:"11px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
-              <span style={{ fontSize:13 }}>G</span>
-              continua con Google
+              <span style={{ fontSize:13 }}>G</span>continua con Google
             </button>
 
-            {/* fine print */}
             {mode==="signup" && (
               <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginTop:16, lineHeight:1.8, textAlign:"center" }}>
                 // registrandoti accetti i <span style={{color:C.gray2,cursor:"pointer"}}>termini di servizio</span><br/>
@@ -1232,34 +1069,32 @@ function AuthPage({ onBack, onLogin }) {
 
 /* ── PUBLIC PROFILE PAGE ─────────────────────────────────────────── */
 function PublicProfilePage({ author, onBack, onSelectRice }) {
-
-  /* mock data — in produzione verrà da Supabase */
   const PROFILE = {
-    username:    author,
-    badge:       "senior",
-    badgeColor:  "#7a90a8",
-    joined:      "marzo 2026",
-    bio:         "linux enjoyer. catppuccin addict. hyprland forever.",
-    email:       null,          /* null = non pubblica */
-    website:     "https://velvet.dev",
-    installs:    5621,
-    likes:       1847,
+    username:   author,
+    badge:      "senior",
+    badgeColor: "#7a90a8",
+    joined:     "marzo 2026",
+    bio:        "linux enjoyer. catppuccin addict. hyprland forever.",
+    email:      null,
+    website:    "https://velvet.dev",
+    installs:   5621,
+    likes:      1847,
+    isFounder:  author === "velvet_void",
   };
 
-  const USER_RICES = RICES.filter(r => r.author === author);
+  const USER_RICES   = RICES.filter(r => r.author === author);
   const displayRices = USER_RICES.length > 0 ? USER_RICES : RICES.slice(0, 3);
 
   const BADGES = [
-    { label:"senior",  color:"#7a90a8" },
+    { label:"senior",        color:"#7a90a8" },
     { label:"early.adopter", color:"#b5a07a" },
-    { label:"top.rice",    color:"#7a9a7a" },
+    { label:"top.rice",      color:"#7a9a7a" },
   ];
 
   return (
     <div style={{ animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:900, margin:"0 auto", padding:"32px 32px 48px" }}>
 
-        {/* breadcrumb */}
         <div style={{ fontSize:11, color:C.gray2, marginBottom:28, fontFamily:C.mono }}>
           <span onClick={onBack} style={{ color:C.fn, cursor:"pointer" }}
             onMouseEnter={e=>e.currentTarget.style.opacity=".6"}
@@ -1269,50 +1104,28 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
           <span style={{ color:C.gray2 }}>@{author}</span>
         </div>
 
-        {/* ── HEADER ── */}
-        <div style={{
-          border:`1px solid ${C.border}`, background:C.bgCard,
-          padding:"24px 28px", marginBottom:24,
-        }}>
+        <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"24px 28px", marginBottom:24 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:20 }}>
-
-            {/* left: identity */}
             <div>
-              {/* username */}
-              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10, flexWrap:"wrap" }}>
                 <span style={{ fontFamily:C.display, fontSize:"clamp(22px,3vw,32px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em" }}>
                   @{PROFILE.username}
                 </span>
                 <span style={{ fontSize:9, border:`1px solid ${PROFILE.badgeColor}55`, color:PROFILE.badgeColor, padding:"2px 9px", fontFamily:C.mono }}>
                   {PROFILE.badge}
                 </span>
+                {PROFILE.isFounder && <FounderBadge/>}
               </div>
-
-              {/* meta */}
               <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, marginBottom:14, lineHeight:2 }}>
-                <span style={{ fontStyle:"italic" }}>// </span>
-                membro da {PROFILE.joined}
+                <span style={{ fontStyle:"italic" }}>// </span>membro da {PROFILE.joined}
               </div>
-
-              {/* bio */}
-              {PROFILE.bio && (
-                <div style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, marginBottom:14, lineHeight:1.8 }}>
-                  {PROFILE.bio}
-                </div>
-              )}
-
-              {/* contact info */}
+              {PROFILE.bio && <div style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, marginBottom:14, lineHeight:1.8 }}>{PROFILE.bio}</div>}
               <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                {PROFILE.email && (
-                  <div style={{ fontSize:11, fontFamily:C.mono, color:C.gray2 }}>
-                    <span style={{ color:C.gray3 }}>email  </span>{PROFILE.email}
-                  </div>
-                )}
+                {PROFILE.email && <div style={{ fontSize:11, fontFamily:C.mono, color:C.gray2 }}><span style={{ color:C.gray3 }}>email  </span>{PROFILE.email}</div>}
                 {PROFILE.website && (
                   <div style={{ fontSize:11, fontFamily:C.mono }}>
                     <span style={{ color:C.gray3 }}>web    </span>
-                    <a href={PROFILE.website} target="_blank" rel="noreferrer"
-                      style={{ color:C.kw, textDecoration:"none" }}
+                    <a href={PROFILE.website} target="_blank" rel="noreferrer" style={{ color:C.kw, textDecoration:"none" }}
                       onMouseEnter={e=>e.currentTarget.style.opacity=".7"}
                       onMouseLeave={e=>e.currentTarget.style.opacity="1"}
                     >{PROFILE.website.replace("https://","")}</a>
@@ -1321,57 +1134,38 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
               </div>
             </div>
 
-            {/* right: stats */}
             <div style={{ display:"flex", flexDirection:"column", gap:16, alignItems:"flex-end" }}>
               <div style={{ display:"flex", gap:24 }}>
-                {[
-                  { v:displayRices.length, l:"rice" },
-                  { v:fmt(PROFILE.installs), l:"installs" },
-                  { v:fmt(PROFILE.likes),    l:"likes" },
-                ].map(s=>(
+                {[{v:displayRices.length,l:"rice"},{v:fmt(PROFILE.installs),l:"installs"},{v:fmt(PROFILE.likes),l:"likes"}].map(s=>(
                   <div key={s.l} style={{ textAlign:"right" }}>
                     <div style={{ fontSize:20, fontWeight:600, color:C.white, fontFamily:C.mono }}>{s.v}</div>
                     <div style={{ fontSize:9, color:C.gray3 }}>{s.l}</div>
                   </div>
                 ))}
               </div>
-
-              {/* badges */}
-              <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}>
+              <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end", alignItems:"center" }}>
                 {BADGES.map(b=>(
-                  <span key={b.label} style={{
-                    fontSize:9, border:`1px solid ${b.color}44`,
-                    color:b.color, padding:"2px 8px", fontFamily:C.mono,
-                  }}>{b.label}</span>
+                  <span key={b.label} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 8px", fontFamily:C.mono }}>{b.label}</span>
                 ))}
+                {PROFILE.isFounder && <FounderBadge/>}
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── RICE LIST ── */}
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>
             // rice pubblicati — {displayRices.length}
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 }}>
             {displayRices.map((r,i)=>(
-              <div key={r.id} className="card" onClick={()=>onSelectRice(r)} style={{
-                border:`1px solid ${C.border}`, background:C.bgCard,
-                cursor:"pointer", overflow:"hidden", transition:"all .2s",
-                animation:`fadeUp .3s ease ${i*.06}s both`,
-              }}>
+              <div key={r.id} className="card" onClick={()=>onSelectRice(r)} style={{ border:`1px solid ${C.border}`, background:C.bgCard, cursor:"pointer", overflow:"hidden", transition:"all .2s", animation:`fadeUp .3s ease ${i*.06}s both` }}>
                 <Thumb rice={r}/>
                 <div style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                     <div>
-                      <div className="ct" style={{ fontSize:12, color:C.white, fontWeight:500, marginBottom:3, transition:"color .15s" }}>
-                        {r.title}
-                      </div>
-                      <div style={{ fontSize:10, color:C.gray2 }}>
-                        <span style={{ color:C.kw }}>{r.wm}</span>
-                        <span style={{ margin:"0 5px" }}>·</span>{r.distro}
-                      </div>
+                      <div className="ct" style={{ fontSize:12, color:C.white, fontWeight:500, marginBottom:3, transition:"color .15s" }}>{r.title}</div>
+                      <div style={{ fontSize:10, color:C.gray2 }}><span style={{ color:C.kw }}>{r.wm}</span><span style={{ margin:"0 5px" }}>·</span>{r.distro}</div>
                     </div>
                     {r.featured && <span style={{ fontSize:9, color:C.string, border:`1px solid ${C.string}40`, padding:"1px 7px" }}>top</span>}
                   </div>
@@ -1385,7 +1179,6 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
             ))}
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -1395,58 +1188,54 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
 function ProfilePage({ onNav }) {
   const { user } = useUser();
   const [rices, setRices] = useState([]);
-  const [tab, setTab] = useState("rice");
+  const [tab, setTab]     = useState("rice");
+
+  // Founder IDs — aggiungi qui gli user ID dei fondatori
+  const FOUNDER_IDS = [];
+  const isFounder = FOUNDER_IDS.includes(user?.id);
 
   useEffect(() => {
     if (!user) return;
-    // Carica i rice dell'utente da Supabase
     import('../lib/supabase').then(({ supabase }) => {
-      supabase
-        .from('rice')
-        .select('*')
-        .eq('author_id', user.id)
+      supabase.from('rice').select('*').eq('author_id', user.id)
         .then(({ data }) => setRices(data || []));
     });
   }, [user]);
 
   if (!user) return null;
 
-  const BADGES = [{ label:"early.adopter", color:"#b5a07a" }];
+  const BADGES = [
+    { label:"early.adopter", color:"#b5a07a" },
+  ];
 
   return (
     <div style={{ padding:"32px 32px 48px", animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
 
-        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>
-          // profilo utente
-        </div>
+        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>// profilo utente</div>
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:24, marginBottom:28, paddingBottom:24, borderBottom:`1px solid ${C.border}` }}>
           <div>
-            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8, flexWrap:"wrap" }}>
               <span style={{ fontFamily:C.display, fontSize:"clamp(24px,4vw,36px)", fontWeight:800, color:C.white, letterSpacing:"-0.03em" }}>
                 @{user.username || user.firstName}
               </span>
-              <span style={{ fontSize:9, border:`1px solid #7a90a855`, color:"#7a90a8", padding:"2px 9px", fontFamily:C.mono }}>
-                trusted
-              </span>
+              <span style={{ fontSize:9, border:`1px solid #7a90a855`, color:"#7a90a8", padding:"2px 9px", fontFamily:C.mono }}>trusted</span>
+              {isFounder && <FounderBadge/>}
             </div>
             <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, marginBottom:16 }}>
-              <span style={{ fontStyle:"italic" }}>// </span>membro da {new Date(user.createdAt).toLocaleDateString('it-IT', { month:'long', year:'numeric' })}
+              <span style={{ fontStyle:"italic" }}>// </span>membro da {new Date(user.createdAt).toLocaleDateString('it-IT',{month:'long',year:'numeric'})}
             </div>
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
               {BADGES.map(b=>(
                 <div key={b.label} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 9px", fontFamily:C.mono }}>{b.label}</div>
               ))}
+              {isFounder && <FounderBadge/>}
             </div>
           </div>
 
           <div style={{ display:"flex", gap:24, alignItems:"flex-start" }}>
-            {[
-              { v:rices.length, l:"rice" },
-              { v:rices.reduce((a,r)=>a+(r.installs||0),0), l:"installs" },
-              { v:rices.reduce((a,r)=>a+(r.likes||0),0), l:"likes" },
-            ].map(s=>(
+            {[{v:rices.length,l:"rice"},{v:rices.reduce((a,r)=>a+(r.installs||0),0),l:"installs"},{v:rices.reduce((a,r)=>a+(r.likes||0),0),l:"likes"}].map(s=>(
               <div key={s.l} style={{ textAlign:"right" }}>
                 <div style={{ fontSize:22, fontWeight:600, color:C.white, fontFamily:C.mono }}>{s.v}</div>
                 <div style={{ fontSize:9, color:C.gray3 }}>{s.l}</div>
@@ -1457,21 +1246,14 @@ function ProfilePage({ onNav }) {
 
         <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
           {[["rice","rice pubblicati"],["settings","impostazioni"]].map(([t,label])=>(
-            <button key={t} className="tb" onClick={()=>setTab(t)} style={{
-              padding:"8px 16px", background:"none", border:"none",
-              borderBottom: tab===t ? `1px solid ${C.white}` : "1px solid transparent",
-              color: tab===t ? C.white : C.gray2,
-              cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1,
-            }}>{label}</button>
+            <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:"8px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1 }}>{label}</button>
           ))}
         </div>
 
         {tab==="rice" && (
           <div style={{ animation:"fadeIn .2s ease" }}>
-            {rices.length === 0 ? (
-              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>
-                // nessun rice pubblicato ancora
-              </div>
+            {rices.length===0 ? (
+              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// nessun rice pubblicato ancora</div>
             ) : (
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 }}>
                 {rices.map((r,i)=>(
@@ -1482,11 +1264,7 @@ function ProfilePage({ onNav }) {
                 ))}
               </div>
             )}
-            <div onClick={()=>onNav("upload")} style={{
-              border:`1px dashed ${C.border}`, marginTop:12,
-              cursor:"pointer", padding:"24px", textAlign:"center",
-              fontSize:11, fontFamily:C.mono, color:C.gray3,
-            }}
+            <div onClick={()=>onNav("upload")} style={{ border:`1px dashed ${C.border}`, marginTop:12, cursor:"pointer", padding:"24px", textAlign:"center", fontSize:11, fontFamily:C.mono, color:C.gray3 }}
               onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHi}
               onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
             >+ carica nuovo rice</div>
@@ -1497,28 +1275,21 @@ function ProfilePage({ onNav }) {
           <div style={{ animation:"fadeIn .2s ease", maxWidth:480 }}>
             <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>// impostazioni account</div>
             {[
-              { label:"USERNAME", val:user.username||"", editable:false, note:"modifica su Clerk" },
-              { label:"EMAIL", val:user.primaryEmailAddress?.emailAddress||"", editable:false },
+              { label:"USERNAME", val:user.username||"", note:"modifica su Clerk" },
+              { label:"EMAIL",    val:user.primaryEmailAddress?.emailAddress||"" },
             ].map(f=>(
               <div key={f.label} style={{ marginBottom:14 }}>
                 <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:6, display:"flex", justifyContent:"space-between" }}>
                   <span>{f.label}</span>
                   {f.note && <span style={{ fontStyle:"italic", textTransform:"none", letterSpacing:0 }}>// {f.note}</span>}
                 </div>
-                <input defaultValue={f.val} disabled style={{
-                  width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`,
-                  color:C.gray3, padding:"9px 12px", fontSize:12, fontFamily:C.mono, outline:"none", opacity:0.6,
-                }}/>
+                <input defaultValue={f.val} disabled style={{ width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray3, padding:"9px 12px", fontSize:12, fontFamily:C.mono, outline:"none", opacity:0.6 }}/>
               </div>
             ))}
             <div style={{ height:1, background:C.border, margin:"16px 0" }}/>
-            <button onClick={()=>{ import('@clerk/nextjs').then(({useClerk})=>{}); window.location.href='/sign-in'; }} style={{
-              padding:"9px 20px", border:`1px solid #a0585844`, background:"transparent",
-              color:"#a05858", cursor:"pointer", fontSize:11, fontFamily:C.mono,
-            }}>logout</button>
+            <button onClick={()=>{ window.location.href='/sign-in'; }} style={{ padding:"9px 20px", border:`1px solid #a0585844`, background:"transparent", color:"#a05858", cursor:"pointer", fontSize:11, fontFamily:C.mono }}>logout</button>
           </div>
         )}
-
       </div>
     </div>
   );
@@ -1527,16 +1298,16 @@ function ProfilePage({ onNav }) {
 /* ── ABOUT PAGE ──────────────────────────────────────────────────── */
 function AboutPage({ onNav, onProfile }) {
   const TEAM = [
-    { role:"founder & dev",   name:"@velvet_void",   bio:"linux enjoyer da 10 anni. hyprland addict. ha creato riceshare per risolvere il suo stesso problema." },
-    { role:"design & ux",     name:"@petal_arch",    bio:"obsessed with pixel-perfect interfaces. rose-pine forever." },
-    { role:"community",       name:"@neonpulse",     bio:"gestisce il discord e cura i weekly picks. tokyo-night enjoyer." },
+    { role:"founder & dev", name:"@velvet_void", bio:"linux enjoyer da 10 anni. hyprland addict. ha creato riceshare per risolvere il suo stesso problema.", isFounder:true },
+    { role:"design & ux",   name:"@petal_arch",  bio:"obsessed with pixel-perfect interfaces. rose-pine forever.",                                           isFounder:false },
+    { role:"community",     name:"@neonpulse",   bio:"gestisce il discord e cura i weekly picks. tokyo-night enjoyer.",                                       isFounder:false },
   ];
 
   const VALUES = [
-    { k:"open source",    v:"tutto il codice di riceshare è pubblico su GitHub. niente lock-in, niente black box." },
-    { k:"community first",v:"le decisioni sul prodotto vengono dalla community. il discord è il posto dove succede tutto." },
-    { k:"qualità",        v:"ogni rice viene revisionato prima di apparire in gallery. preferiamo meno rice buoni a tanti mediocri." },
-    { k:"semplicità",     v:"un comando per installare qualsiasi setup. questa è la promessa che non vogliamo mai tradire." },
+    { k:"open source",     v:"tutto il codice di riceshare è pubblico su GitHub. niente lock-in, niente black box." },
+    { k:"community first", v:"le decisioni sul prodotto vengono dalla community. il discord è il posto dove succede tutto." },
+    { k:"qualità",         v:"ogni rice viene revisionato prima di apparire in gallery. preferiamo meno rice buoni a tanti mediocri." },
+    { k:"semplicità",      v:"un comando per installare qualsiasi setup. questa è la promessa che non vogliamo mai tradire." },
   ];
 
   const TIMELINE = [
@@ -1549,91 +1320,51 @@ function AboutPage({ onNav, onProfile }) {
   return (
     <div style={{ animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:860, margin:"0 auto", padding:"32px 40px 60px" }}>
-
-        {/* ── HEADER ── */}
-        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>
-          // chi siamo
-        </div>
+        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>// chi siamo</div>
         <div style={{ marginBottom:8 }}>
-          <span style={{ fontFamily:C.display, fontSize:"clamp(28px,5vw,48px)", fontWeight:900, color:C.white, letterSpacing:"-0.04em", textTransform:"uppercase" }}>
-            RICESHARE
-          </span>
+          <span style={{ fontFamily:C.display, fontSize:"clamp(28px,5vw,48px)", fontWeight:900, color:C.white, letterSpacing:"-0.04em", textTransform:"uppercase" }}>RICESHARE</span>
         </div>
         <div style={{ fontSize:13, color:C.gray2, fontFamily:C.mono, lineHeight:2, marginBottom:40, maxWidth:560 }}>
           <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-          riceshare nasce dalla frustrazione di dover cercare dotfile su reddit, github e telegram
-          per trovare quello che volevi. volevamo un posto unico, ben fatto, con un installer che
-          funzionasse davvero. così l'abbiamo costruito.
+          riceshare nasce dalla frustrazione di dover cercare dotfile su reddit, github e telegram per trovare quello che volevi. volevamo un posto unico, ben fatto, con un installer che funzionasse davvero. così l'abbiamo costruito.
         </div>
 
         <div style={{ height:1, background:C.border, marginBottom:40 }}/>
 
-        {/* ── VALORI ── */}
         <div style={{ marginBottom:48 }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>
-            // i nostri valori
-          </div>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>// i nostri valori</div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,260px),1fr))", gap:12 }}>
             {VALUES.map((v,i)=>(
-              <div key={v.k} style={{
-                border:`1px solid ${C.border}`, background:C.bgCard,
-                padding:"18px 20px",
-                animation:`fadeUp .3s ease ${i*.08}s both`,
-              }}>
-                <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, fontWeight:500, marginBottom:8 }}>
-                  <span style={{ color:C.gray3 }}>// </span>{v.k}
-                </div>
+              <div key={v.k} style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"18px 20px", animation:`fadeUp .3s ease ${i*.08}s both` }}>
+                <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, fontWeight:500, marginBottom:8 }}><span style={{ color:C.gray3 }}>// </span>{v.k}</div>
                 <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{v.v}</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* ── TIMELINE ── */}
         <div style={{ marginBottom:48 }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>
-            // storia
-          </div>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>// storia</div>
           {TIMELINE.map((t,i)=>(
-            <div key={t.date} style={{
-              display:"flex", gap:20, paddingBottom:20,
-              borderBottom: i<TIMELINE.length-1 ? `1px solid ${C.border}` : "none",
-              marginBottom:20,
-              animation:`fadeUp .3s ease ${i*.07}s both`,
-            }}>
+            <div key={t.date} style={{ display:"flex", gap:20, paddingBottom:20, borderBottom:i<TIMELINE.length-1?`1px solid ${C.border}`:"none", marginBottom:20, animation:`fadeUp .3s ease ${i*.07}s both` }}>
               <div style={{ width:80, flexShrink:0 }}>
-                <span style={{
-                  fontSize:10, fontFamily:C.mono,
-                  color: t.date==="prossimo" ? C.string : C.kw,
-                  fontStyle: t.date==="prossimo" ? "italic" : "normal",
-                }}>{t.date}</span>
+                <span style={{ fontSize:10, fontFamily:C.mono, color:t.date==="prossimo"?C.string:C.kw, fontStyle:t.date==="prossimo"?"italic":"normal" }}>{t.date}</span>
               </div>
-              <div style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>
-                {t.text}
-              </div>
+              <div style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{t.text}</div>
             </div>
           ))}
         </div>
 
-        {/* ── TEAM ── */}
         <div style={{ marginBottom:48 }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>
-            // il team
-          </div>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>// il team</div>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {TEAM.map((m,i)=>(
-              <div key={m.name} style={{
-                border:`1px solid ${C.border}`, background:C.bgCard,
-                padding:"18px 20px", display:"flex", gap:20, alignItems:"flex-start",
-                animation:`fadeUp .3s ease ${i*.08}s both`,
-              }}>
+              <div key={m.name} style={{ border:`1px solid ${m.isFounder?C.gold+"44":C.border}`, background:m.isFounder?`${C.gold}06`:C.bgCard, padding:"18px 20px", display:"flex", gap:20, alignItems:"flex-start", animation:`fadeUp .3s ease ${i*.08}s both`, transition:"border-color .2s" }}>
                 <div style={{ flex:1 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-                    <span
-                      onClick={()=>onProfile && onProfile(m.name.replace("@",""))}
-                      style={{ fontSize:13, color:C.fn, fontFamily:C.mono, fontWeight:500, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}
-                    >{m.name}</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6, flexWrap:"wrap" }}>
+                    <span onClick={()=>onProfile&&onProfile(m.name.replace("@",""))} style={{ fontSize:13, color:C.fn, fontFamily:C.mono, fontWeight:500, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}>{m.name}</span>
                     <span style={{ fontSize:9, color:C.gray3, border:`1px solid ${C.border}`, padding:"1px 7px", fontFamily:C.mono }}>{m.role}</span>
+                    {m.isFounder && <FounderBadge/>}
                   </div>
                   <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{m.bio}</div>
                 </div>
@@ -1642,29 +1373,21 @@ function AboutPage({ onNav, onProfile }) {
           </div>
         </div>
 
-        {/* ── CTA ── */}
         <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"24px 28px" }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>
-            // unisciti a noi
-          </div>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>// unisciti a noi</div>
           <div style={{ fontSize:13, color:C.white, fontFamily:C.mono, marginBottom:20, lineHeight:1.9 }}>
             riceshare è open source e guidato dalla community.<br/>
             <span style={{ color:C.gray3 }}>// </span>contribuisci su GitHub, entra nel Discord, o semplicemente carica il tuo rice.
           </div>
           <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
             <a href="https://github.com/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-              <button className="bs" style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-                GitHub →
-              </button>
+              <button className="bs" style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>GitHub →</button>
             </a>
             <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-              <button className="bg" style={{ padding:"9px 22px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-                Discord
-              </button>
+              <button className="bg" style={{ padding:"9px 22px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>Discord</button>
             </a>
           </div>
         </div>
-
       </div>
     </div>
   );
@@ -1675,18 +1398,10 @@ function Footer() {
   return (
     <footer style={{ borderTop:`1px solid ${C.border}`, background:C.bgDeep, flexShrink:0 }}>
       <div style={{ display:"flex", alignItems:"stretch", minHeight:52 }}>
-        <div style={{
-          width:GUTTER, flexShrink:0, background:C.gutter,
-          borderRight:`1px solid ${C.border}`,
-          display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:14,
-        }}>
+        <div style={{ width:GUTTER, flexShrink:0, background:C.gutter, borderRight:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:14 }}>
           <span style={{ fontSize:10, color:C.lineNum, fontFamily:C.mono, userSelect:"none", fontStyle:"italic" }}>eof</span>
         </div>
-        <div style={{
-          flex:1, padding:"14px 24px",
-          display:"flex", alignItems:"center",
-          justifyContent:"space-between", flexWrap:"wrap", gap:12,
-        }}>
+        <div style={{ flex:1, padding:"14px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:16 }}>
             <span style={{ fontFamily:C.display, fontSize:13, fontWeight:800, color:C.white, letterSpacing:"-0.02em", textTransform:"uppercase" }}>Riceshare</span>
             <span style={{ fontSize:10, fontFamily:C.mono, color:C.gray3 }}>v1.0.0</span>
@@ -1710,54 +1425,32 @@ function Footer() {
 /* ── UPLOAD SIDEBAR ─────────────────────────────────────────────── */
 function UploadSidebar({ step, rice, installCmd }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard?.writeText(installCmd).catch(()=>{});
-    setCopied(true); setTimeout(()=>setCopied(false), 2000);
-  };
+  const copy = () => { navigator.clipboard?.writeText(installCmd).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); };
 
-  /* progress: how many fields are filled */
-  const progress = [
-    !!rice.name,
-    !!rice.wm,
-    Object.values(rice.components).some(Boolean),
-    rice.deps.length > 0,
-    true,
-  ];
-  const pct = Math.round((step / 4) * 100);
-
-  /* top rice this week — mock */
+  const pct = Math.round((step/4)*100);
   const TRENDING = [
-    { title:"catppuccin-mocha",  author:"velvet_void",  installs:"2.3k", wm:"hyprland" },
-    { title:"tokyo-night",       author:"neonpulse",    installs:"3.1k", wm:"sway"     },
-    { title:"rose-pine",         author:"petal_arch",   installs:"2.7k", wm:"hyprland" },
-    { title:"nord-minimal",      author:"arctic_fox",   installs:"1.2k", wm:"bspwm"    },
+    { title:"catppuccin-mocha", author:"velvet_void", installs:"2.3k", wm:"hyprland" },
+    { title:"tokyo-night",      author:"neonpulse",   installs:"3.1k", wm:"sway"     },
+    { title:"rose-pine",        author:"petal_arch",  installs:"2.7k", wm:"hyprland" },
+    { title:"nord-minimal",     author:"arctic_fox",  installs:"1.2k", wm:"bspwm"    },
   ];
 
   return (
     <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:12 }}>
-
-      {/* ── PROGRESS ── */}
       <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep }}>
         <div style={{ padding:"7px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em", display:"flex", justifyContent:"space-between" }}>
           <span>// avanzamento</span>
-          <span style={{ color: pct===100 ? C.fn : C.gray3 }}>{pct}%</span>
+          <span style={{ color:pct===100?C.fn:C.gray3 }}>{pct}%</span>
         </div>
         <div style={{ padding:"14px" }}>
-          {/* bar */}
           <div style={{ height:2, background:C.border, marginBottom:14, position:"relative" }}>
-            <div style={{ position:"absolute", left:0, top:0, height:"100%", width:pct+"%", background: pct===100?C.fn:C.kw, transition:"width .4s ease" }}/>
+            <div style={{ position:"absolute", left:0, top:0, height:"100%", width:pct+"%", background:pct===100?C.fn:C.kw, transition:"width .4s ease" }}/>
           </div>
-          {/* steps checklist */}
           {["info base","sistema","componenti","dipendenze","file"].map((s,i)=>(
             <div key={s} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-              <div style={{
-                width:14, height:14, borderRadius:2, flexShrink:0,
-                border:`1px solid ${i<step?C.fn:i===step?C.kw:C.gray3}`,
-                background: i<step ? C.fn+"22" : "transparent",
-                display:"flex", alignItems:"center", justifyContent:"center",
-              }}>
-                {i<step && <span style={{ fontSize:8, color:C.fn }}>✓</span>}
-                {i===step && <span style={{ fontSize:7, color:C.kw }}>●</span>}
+              <div style={{ width:14, height:14, borderRadius:2, flexShrink:0, border:`1px solid ${i<step?C.fn:i===step?C.kw:C.gray3}`, background:i<step?C.fn+"22":"transparent", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                {i<step&&<span style={{ fontSize:8, color:C.fn }}>✓</span>}
+                {i===step&&<span style={{ fontSize:7, color:C.kw }}>●</span>}
               </div>
               <span style={{ fontSize:11, fontFamily:C.mono, color:i<step?C.fn:i===step?C.white:C.gray3 }}>{s}</span>
             </div>
@@ -1765,52 +1458,37 @@ function UploadSidebar({ step, rice, installCmd }) {
         </div>
       </div>
 
-      {/* ── LIVE COMMAND PREVIEW ── */}
       <div style={{ border:`1px solid ${rice.name?C.borderHi:C.border}`, background:C.bgDeep, transition:"border-color .3s" }}>
-        <div style={{ padding:"7px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>
-          // comando generato
-        </div>
+        <div style={{ padding:"7px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// comando generato</div>
         <div style={{ padding:"12px 14px" }}>
-          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom: rice.wm ? 12 : 0 }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:rice.wm?12:0 }}>
             <span style={{ color:C.gray3, fontSize:12, flexShrink:0 }}>$</span>
-            <code style={{ fontSize:10, fontFamily:C.mono, color:rice.name?C.gray1:C.gray3, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0, transition:"color .3s", fontStyle:rice.name?"normal":"italic" }}>
-              {installCmd}
-            </code>
-            {rice.name && (
-              <button onClick={copy} className="bs" style={{ padding:"3px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:9, fontFamily:C.mono, flexShrink:0, transition:"all .15s" }}>
-                {copied?"✓":"copia"}
-              </button>
-            )}
+            <code style={{ fontSize:10, fontFamily:C.mono, color:rice.name?C.gray1:C.gray3, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0, transition:"color .3s", fontStyle:rice.name?"normal":"italic" }}>{installCmd}</code>
+            {rice.name && <button onClick={copy} className="bs" style={{ padding:"3px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:9, fontFamily:C.mono, flexShrink:0, transition:"all .15s" }}>{copied?"✓":"copia"}</button>}
           </div>
-          {/* system tags */}
           {rice.wm && (
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
               <span style={{ fontSize:9, color:C.kw, border:`1px solid ${C.kw}44`, padding:"1px 7px" }}>{rice.wm}</span>
               {rice.distros.slice(0,2).map(d=><span key={d} style={{ fontSize:9, color:C.gray2, border:`1px solid ${C.border}`, padding:"1px 7px" }}>{d}</span>)}
-              {rice.shell && <span style={{ fontSize:9, color:C.gray2, border:`1px solid ${C.border}`, padding:"1px 7px" }}>{rice.shell}</span>}
-              {rice.deps.length>0 && <span style={{ fontSize:9, color:C.fn, border:`1px solid ${C.fn}33`, padding:"1px 7px" }}>{rice.deps.length} pkg</span>}
+              {rice.shell&&<span style={{ fontSize:9, color:C.gray2, border:`1px solid ${C.border}`, padding:"1px 7px" }}>{rice.shell}</span>}
+              {rice.deps.length>0&&<span style={{ fontSize:9, color:C.fn, border:`1px solid ${C.fn}33`, padding:"1px 7px" }}>{rice.deps.length} pkg</span>}
             </div>
           )}
         </div>
       </div>
 
-      {/* ── TRENDING ── */}
       <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, flex:1 }}>
-        <div style={{ padding:"7px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>
-          // trending questa settimana
-        </div>
+        <div style={{ padding:"7px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// trending questa settimana</div>
         <div>
           {TRENDING.map((r,i)=>(
-            <div key={r.title} style={{ padding:"10px 14px", borderBottom: i<TRENDING.length-1?`1px solid ${C.border}`:"none", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div key={r.title} style={{ padding:"10px 14px", borderBottom:i<TRENDING.length-1?`1px solid ${C.border}`:"none", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div>
                 <div style={{ fontSize:11, color:C.white, marginBottom:3 }}>
                   <span style={{ color:C.fn, fontFamily:C.mono }}>{r.author}</span>
                   <span style={{ color:C.gray3 }}>/</span>
                   <span style={{ fontFamily:C.mono }}>{r.title}</span>
                 </div>
-                <div style={{ display:"flex", gap:6 }}>
-                  <span style={{ fontSize:9, color:C.kw, border:`1px solid ${C.kw}33`, padding:"1px 6px", fontFamily:C.mono }}>{r.wm}</span>
-                </div>
+                <span style={{ fontSize:9, color:C.kw, border:`1px solid ${C.kw}33`, padding:"1px 6px", fontFamily:C.mono }}>{r.wm}</span>
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, fontWeight:500 }}>{r.installs}</div>
@@ -1820,7 +1498,6 @@ function UploadSidebar({ step, rice, installCmd }) {
           ))}
         </div>
       </div>
-
     </div>
   );
 }
@@ -1834,30 +1511,15 @@ const DEPS_SUG  = ["hyprland","waybar","rofi","wofi","dunst","kitty","alacritty"
 
 function Chip({ label, active, color, onClick }) {
   return (
-    <button onClick={onClick} style={{
-      padding:"3px 12px", fontSize:11, fontFamily:C.mono,
-      cursor:"pointer", border:"1px solid",
-      borderColor: active ? (color||C.white) : C.border,
-      background: active ? (color ? color+"18" : "#ffffff10") : "transparent",
-      color: active ? (color||C.white) : C.gray2,
-      transition:"all .15s", borderRadius:2,
-    }}>{label}</button>
+    <button onClick={onClick} style={{ padding:"3px 12px", fontSize:11, fontFamily:C.mono, cursor:"pointer", border:"1px solid", borderColor:active?(color||C.white):C.border, background:active?(color?color+"18":"#ffffff10"):"transparent", color:active?(color||C.white):C.gray2, transition:"all .15s", borderRadius:2 }}>{label}</button>
   );
 }
 
 function SToggle({ label, checked, onChange }) {
   return (
     <label style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer", userSelect:"none" }}>
-      <div onClick={()=>onChange(!checked)} style={{
-        width:32, height:18, borderRadius:9, position:"relative",
-        background: checked ? C.fn : C.gray3, transition:"background .2s", flexShrink:0,
-      }}>
-        <div style={{
-          position:"absolute", top:3,
-          left: checked ? 17 : 3,
-          width:12, height:12, borderRadius:"50%",
-          background:"#fff", transition:"left .2s",
-        }}/>
+      <div onClick={()=>onChange(!checked)} style={{ width:32, height:18, borderRadius:9, position:"relative", background:checked?C.fn:C.gray3, transition:"background .2s", flexShrink:0 }}>
+        <div style={{ position:"absolute", top:3, left:checked?17:3, width:12, height:12, borderRadius:"50%", background:"#fff", transition:"left .2s" }}/>
       </div>
       <span style={{ fontSize:12, color:C.gray2 }}>{label}</span>
     </label>
@@ -1866,59 +1528,41 @@ function SToggle({ label, checked, onChange }) {
 
 function UploadPage({ trustLevel = 1 }) {
   const { user } = useUser();
-  const [step, setStep]         = useState(0);
-  const [rice, setRice]         = useState({
-    name:"", author:"", description:"",
-    wm:"", distros:[], terminal:"", shell:"",
-    deps:[], components:{ waybar:false, rofi:false, dunst:false, wallpaper:true, fonts:true, neovim:false },
-  });
+  const [step, setStep]   = useState(0);
+  const [rice, setRice]   = useState({ name:"", author:"", description:"", wm:"", distros:[], terminal:"", shell:"", deps:[], components:{ waybar:false, rofi:false, dunst:false, wallpaper:true, fonts:true, neovim:false } });
   const [depInput, setDepInput] = useState("");
-  const [files, setFiles]       = useState([]);
+  const [files, setFiles] = useState([]);
   const [dragging, setDragging] = useState(false);
-  const [done, setDone]         = useState(false);
+  const [done, setDone]   = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const fileRef                 = useRef(null);
+  const fileRef = useRef(null);
 
   const set  = (k,v) => setRice(r=>({...r,[k]:v}));
   const setC = (k,v) => setRice(r=>({...r,components:{...r.components,[k]:v}}));
-
   const addDep = d => { if(d&&!rice.deps.includes(d)) set("deps",[...rice.deps,d]); setDepInput(""); };
-  const remDep = d => set("deps", rice.deps.filter(x=>x!==d));
-
-  const addFiles = inc => {
-    const arr = Array.from(inc);
-    setFiles(prev=>{ const n=new Set(prev.map(f=>f.name)); return [...prev,...arr.filter(f=>!n.has(f.name))]; });
-  };
-  const remFile = n => setFiles(f=>f.filter(x=>x.name!==n));
-
-  const fmtSize = b => b<1024?b+" B":b<1048576?(b/1024).toFixed(1)+" KB":(b/1048576).toFixed(1)+" MB";
-  const fileTag = name => {
+  const remDep = d => set("deps",rice.deps.filter(x=>x!==d));
+  const addFiles = inc => { const arr=Array.from(inc); setFiles(prev=>{ const n=new Set(prev.map(f=>f.name)); return [...prev,...arr.filter(f=>!n.has(f.name))]; }); };
+  const remFile  = n => setFiles(f=>f.filter(x=>x.name!==n));
+  const fmtSize  = b => b<1024?b+" B":b<1048576?(b/1024).toFixed(1)+" KB":(b/1048576).toFixed(1)+" MB";
+  const fileTag  = name => {
     if(/\.(png|jpg|jpeg|webp)$/i.test(name)) return {l:"img",c:C.string};
     if(/\.(ttf|otf|woff2?)$/i.test(name))    return {l:"fnt",c:C.kw};
     if(/\.(conf|toml|yaml|lua|sh|zsh|fish|json|ini)$/i.test(name)) return {l:"cfg",c:C.fn};
     return {l:"bin",c:C.gray2};
   };
 
-  /* generated install command */
-  const installCmd = rice.name && rice.author
+  const installCmd = rice.name&&rice.author
     ? `curl -fsSL riceshare.dev/install/@you/${rice.name||"rice"} | bash`
     : "// compila il form per generare il comando";
 
   const STEPS = ["info","sistema","componenti","dipendenze","file"];
   const canNext = [
-    rice.name && (rice.description.length===0 || (rice.description.length>=50&&rice.description.length<=500)),
-    !!rice.wm,
-    true,
-    true,
-    files.length > 0,
+    rice.name && (rice.description.length===0||(rice.description.length>=50&&rice.description.length<=500)),
+    !!rice.wm, true, true, files.length>0,
   ][step];
 
   const labelStyle = { fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:8, display:"block" };
-  const inputStyle = {
-    width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`,
-    color:C.white, padding:"8px 12px", fontSize:12,
-    fontFamily:C.mono, outline:"none", transition:"border-color .15s",
-  };
+  const inputStyle = { width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`, color:C.white, padding:"8px 12px", fontSize:12, fontFamily:C.mono, outline:"none", transition:"border-color .15s" };
 
   const handlePublish = async () => {
     if (!user) return;
@@ -1927,15 +1571,15 @@ function UploadPage({ trustLevel = 1 }) {
       const { supabase } = await import('../lib/supabase');
       await supabase.from('rice').insert({
         title:       rice.name,
-        slug:        `${user.username || user.id}-${rice.name}`.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''),
+        slug:        `${user.username||user.id}-${rice.name}`.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''),
         author_id:   user.id,
         description: rice.description,
         wm:          rice.wm,
-        distro:      rice.distros?.[0] || '',
+        distro:      rice.distros?.[0]||'',
         terminal:    rice.terminal,
         shell:       rice.shell,
         deps:        rice.deps,
-        status:      trustLevel <= 1 ? 'pending' : 'approved',
+        status:      trustLevel<=1?'pending':'approved',
       });
     } catch(e) { console.error(e); }
     setPublishing(false);
@@ -1944,14 +1588,9 @@ function UploadPage({ trustLevel = 1 }) {
 
   if (done) return (
     <div style={{ animation:"fadeIn .3s ease", flex:1, display:"flex", flexDirection:"column", overflow:"hidden", justifyContent:"center", padding:"40px 32px 48px" }}>
-      {/* success */}
       <div style={{ maxWidth:560 }}>
-        <div style={{ fontSize:11, color:C.fn, fontFamily:C.mono, marginBottom:16, fontStyle:"italic" }}>
-          // upload completato
-        </div>
-        <div style={{ fontFamily:C.display, fontSize:"clamp(24px,3vw,36px)", fontWeight:800, color:C.white, letterSpacing:"-0.02em", marginBottom:24 }}>
-          {rice.name} pubblicato.
-        </div>
+        <div style={{ fontSize:11, color:C.fn, fontFamily:C.mono, marginBottom:16, fontStyle:"italic" }}>// upload completato</div>
+        <div style={{ fontFamily:C.display, fontSize:"clamp(24px,3vw,36px)", fontWeight:800, color:C.white, letterSpacing:"-0.02em", marginBottom:24 }}>{rice.name} pubblicato.</div>
         <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, marginBottom:20 }}>
           <div style={{ padding:"6px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3 }}>install command</div>
           <div style={{ padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
@@ -1961,16 +1600,11 @@ function UploadPage({ trustLevel = 1 }) {
         </div>
         <p style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9, marginBottom:24 }}>
           <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-          il tuo rice è ora visibile nella gallery.<br/>
-          chiunque può installarlo con il comando sopra.
+          il tuo rice è ora visibile nella gallery.<br/>chiunque può installarlo con il comando sopra.
         </p>
         <div style={{ display:"flex", gap:10 }}>
-          <button className="bs" onClick={()=>{ setDone(false); setStep(0); setRice({name:"",author:"",description:"",wm:"",distros:[],terminal:"",shell:"",deps:[],components:{waybar:false,rofi:false,dunst:false,wallpaper:true,fonts:true,neovim:false}}); setFiles([]); }} style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-            carica un altro →
-          </button>
-          <button className="bg" style={{ padding:"9px 22px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-            vedi nella gallery
-          </button>
+          <button className="bs" onClick={()=>{ setDone(false); setStep(0); setRice({name:"",author:"",description:"",wm:"",distros:[],terminal:"",shell:"",deps:[],components:{waybar:false,rofi:false,dunst:false,wallpaper:true,fonts:true,neovim:false}}); setFiles([]); }} style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>carica un altro →</button>
+          <button className="bg" style={{ padding:"9px 22px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>vedi nella gallery</button>
         </div>
       </div>
     </div>
@@ -1978,45 +1612,26 @@ function UploadPage({ trustLevel = 1 }) {
 
   return (
     <div style={{ animation:"fadeIn .2s ease", flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"32px 32px 48px" }}>
-      {/* trust level banner */}
-      {trustLevel <= 1 && (
+      {trustLevel<=1 && (
         <div style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 16px", border:`1px solid ${C.string}44`, background:`${C.string}08`, marginBottom:16, fontSize:11, fontFamily:C.mono, color:C.string }}>
           <span style={{ fontSize:9, border:`1px solid ${C.string}55`, padding:"1px 7px", flexShrink:0 }}>member</span>
-          <span style={{ color:C.gray2 }}>
-            <span style={{ fontStyle:"italic", color:C.gray3 }}>// </span>
-            il tuo rice andrà in revisione prima di apparire in gallery — livello <span style={{ color:C.string }}>trusted</span> richiede 1 rice approvato e account registrato
-          </span>
+          <span style={{ color:C.gray2 }}><span style={{ fontStyle:"italic", color:C.gray3 }}>// </span>il tuo rice andrà in revisione prima di apparire in gallery — livello <span style={{ color:C.string }}>trusted</span> richiede 1 rice approvato e account registrato</span>
         </div>
       )}
       <div style={{ display:"flex", flex:1, minHeight:0, overflow:"hidden", alignItems:"flex-start", justifyContent:"center" }}>
       <div style={{ width:"100%", maxWidth:600, overflowY:"auto", height:"100%" }}>
-
-        {/* header */}
         <div style={{ marginBottom:32 }}>
-          <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>
-            // carica il tuo rice
-          </div>
-          <div style={{ fontFamily:C.display, fontSize:"clamp(22px,3vw,32px)", fontWeight:800, color:C.white, letterSpacing:"-0.02em", marginBottom:16 }}>
-            Nuovo rice
-          </div>
-          {/* stepper */}
+          <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>// carica il tuo rice</div>
+          <div style={{ fontFamily:C.display, fontSize:"clamp(22px,3vw,32px)", fontWeight:800, color:C.white, letterSpacing:"-0.02em", marginBottom:16 }}>Nuovo rice</div>
           <div style={{ display:"flex", gap:0, borderBottom:`1px solid ${C.border}` }}>
             {STEPS.map((s,i)=>(
-              <button key={s} onClick={()=>i<=step&&setStep(i)} style={{
-                padding:"8px 16px", background:"none", border:"none",
-                borderBottom: i===step ? `1px solid ${C.white}` : "1px solid transparent",
-                color: i===step ? C.white : i<step ? C.fn : C.gray3,
-                cursor: i<=step?"pointer":"default",
-                fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s",
-              }}>
-                <span style={{ color: i<step?C.fn:C.gray3, marginRight:6 }}>{i<step?"✓":String(i+1).padStart(2,"0")}</span>
-                {s}
+              <button key={s} onClick={()=>i<=step&&setStep(i)} style={{ padding:"8px 16px", background:"none", border:"none", borderBottom:i===step?`1px solid ${C.white}`:"1px solid transparent", color:i===step?C.white:i<step?C.fn:C.gray3, cursor:i<=step?"pointer":"default", fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
+                <span style={{ color:i<step?C.fn:C.gray3, marginRight:6 }}>{i<step?"✓":String(i+1).padStart(2,"0")}</span>{s}
               </button>
             ))}
           </div>
         </div>
 
-        {/* ── STEP 0: info ── */}
         {step===0 && (
           <div style={{ display:"flex", flexDirection:"column", gap:16, animation:"fadeIn .2s ease" }}>
             <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// informazioni base</div>
@@ -2025,31 +1640,19 @@ function UploadPage({ trustLevel = 1 }) {
               <input value={rice.name} onChange={e=>set("name",e.target.value)} placeholder="es. catppuccin-mocha-hypr" style={inputStyle}
                 onFocus={e=>e.target.style.borderColor=C.white} onBlur={e=>e.target.style.borderColor=C.border}/>
             </div>
-
             <div>
               <span style={labelStyle}>DESCRIZIONE</span>
-              <textarea
-                value={rice.description}
-                onChange={e=>set("description",e.target.value.slice(0,500))}
-                placeholder="descrivi brevemente il tuo rice..."
+              <textarea value={rice.description} onChange={e=>set("description",e.target.value.slice(0,500))} placeholder="descrivi brevemente il tuo rice..."
                 style={{...inputStyle, resize:"none", height:96, lineHeight:1.7}}
-                onFocus={e=>e.target.style.borderColor=C.white}
-                onBlur={e=>e.target.style.borderColor=C.border}
+                onFocus={e=>e.target.style.borderColor=C.white} onBlur={e=>e.target.style.borderColor=C.border}
               />
               <div style={{ display:"flex", justifyContent:"space-between", marginTop:5, fontSize:10, fontFamily:C.mono }}>
-                <span style={{ color: rice.description.length>0&&rice.description.length<50 ? C.string : C.gray3 }}>
-                  {rice.description.length>0&&rice.description.length<50
-                    ? `// minimo 50 caratteri (${50-rice.description.length} mancanti)`
-                    : rice.description.length>=50
-                    ? <span style={{color:C.fn}}>// ok</span>
-                    : "// min 50 · max 500 caratteri"}
+                <span style={{ color:rice.description.length>0&&rice.description.length<50?C.string:C.gray3 }}>
+                  {rice.description.length>0&&rice.description.length<50?`// minimo 50 caratteri (${50-rice.description.length} mancanti)`:rice.description.length>=50?<span style={{color:C.fn}}>// ok</span>:"// min 50 · max 500 caratteri"}
                 </span>
-                <span style={{ color: rice.description.length>=450 ? C.string : C.gray3 }}>
-                  {rice.description.length}/500
-                </span>
+                <span style={{ color:rice.description.length>=450?C.string:C.gray3 }}>{rice.description.length}/500</span>
               </div>
             </div>
-            {/* live preview command */}
             {(rice.name||rice.author) && (
               <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, animation:"fadeIn .2s ease" }}>
                 <div style={{ padding:"5px 12px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3 }}>anteprima comando</div>
@@ -2062,94 +1665,52 @@ function UploadPage({ trustLevel = 1 }) {
           </div>
         )}
 
-        {/* ── STEP 1: sistema ── */}
         {step===1 && (
           <div style={{ display:"flex", flexDirection:"column", gap:20, animation:"fadeIn .2s ease" }}>
             <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// sistema di destinazione</div>
             <div>
               <span style={labelStyle}>WINDOW MANAGER / DE *</span>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                {WMS.map(w=><Chip key={w} label={w} active={rice.wm===w} onClick={()=>set("wm",w)}/>)}
-              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{WMS.map(w=><Chip key={w} label={w} active={rice.wm===w} onClick={()=>set("wm",w)}/>)}</div>
             </div>
             <div>
               <span style={labelStyle}>DISTRO COMPATIBILI</span>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                {DISTROS.map(d=><Chip key={d} label={d} active={rice.distros.includes(d)} onClick={()=>set("distros",rice.distros.includes(d)?rice.distros.filter(x=>x!==d):[...rice.distros,d])}/>)}
-              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{DISTROS.map(d=><Chip key={d} label={d} active={rice.distros.includes(d)} onClick={()=>set("distros",rice.distros.includes(d)?rice.distros.filter(x=>x!==d):[...rice.distros,d])}/>)}</div>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              <div>
-                <span style={labelStyle}>TERMINALE</span>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                  {TERMINALS.map(t=><Chip key={t} label={t} active={rice.terminal===t} onClick={()=>set("terminal",t)}/>)}
-                </div>
-              </div>
-              <div>
-                <span style={labelStyle}>SHELL</span>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                  {SHELLS.map(s=><Chip key={s} label={s} active={rice.shell===s} onClick={()=>set("shell",s)}/>)}
-                </div>
-              </div>
+              <div><span style={labelStyle}>TERMINALE</span><div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{TERMINALS.map(t=><Chip key={t} label={t} active={rice.terminal===t} onClick={()=>set("terminal",t)}/>)}</div></div>
+              <div><span style={labelStyle}>SHELL</span><div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{SHELLS.map(s=><Chip key={s} label={s} active={rice.shell===s} onClick={()=>set("shell",s)}/>)}</div></div>
             </div>
           </div>
         )}
 
-        {/* ── STEP 2: componenti ── */}
         {step===2 && (
           <div style={{ display:"flex", flexDirection:"column", gap:14, animation:"fadeIn .2s ease" }}>
             <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// componenti inclusi nel rice</div>
-            <p style={{ fontSize:11, color:C.gray2, lineHeight:1.8 }}>
-              <span style={{ color:C.gray3 }}>// </span>
-              seleziona i componenti che hai configurato. lo script di installazione verrà generato di conseguenza.
-            </p>
-            {Object.entries({
-              waybar:   "Waybar — status bar",
-              rofi:     "Rofi / Wofi — launcher",
-              dunst:    "Dunst — notifiche",
-              wallpaper:"Wallpaper",
-              fonts:    "Font personalizzati",
-              neovim:   "Neovim config",
-            }).map(([k,label])=>(
+            <p style={{ fontSize:11, color:C.gray2, lineHeight:1.8 }}><span style={{ color:C.gray3 }}>// </span>seleziona i componenti che hai configurato.</p>
+            {Object.entries({ waybar:"Waybar — status bar", rofi:"Rofi / Wofi — launcher", dunst:"Dunst — notifiche", wallpaper:"Wallpaper", fonts:"Font personalizzati", neovim:"Neovim config" }).map(([k,label])=>(
               <SToggle key={k} label={label} checked={rice.components[k]} onChange={v=>setC(k,v)}/>
             ))}
           </div>
         )}
 
-        {/* ── STEP 3: dipendenze ── */}
         {step===3 && (
           <div style={{ display:"flex", flexDirection:"column", gap:16, animation:"fadeIn .2s ease" }}>
             <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// dipendenze da installare</div>
             <div style={{ display:"flex", gap:8 }}>
-              <input
-                value={depInput} onChange={e=>setDepInput(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&addDep(depInput.trim())}
-                placeholder="nome pacchetto..."
-                style={{...inputStyle, flex:1}}
-                onFocus={e=>e.target.style.borderColor=C.white}
-                onBlur={e=>e.target.style.borderColor=C.border}
-              />
+              <input value={depInput} onChange={e=>setDepInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addDep(depInput.trim())} placeholder="nome pacchetto..."
+                style={{...inputStyle, flex:1}} onFocus={e=>e.target.style.borderColor=C.white} onBlur={e=>e.target.style.borderColor=C.border}/>
               <button onClick={()=>addDep(depInput.trim())} className="bs" style={{ padding:"8px 16px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.gray1, cursor:"pointer", fontSize:11, fontFamily:C.mono, flexShrink:0, transition:"all .15s" }}>+ add</button>
             </div>
             <div>
               <span style={labelStyle}>SUGGERITI</span>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                {DEPS_SUG.filter(d=>!rice.deps.includes(d)).map(d=>(
-                  <Chip key={d} label={d} active={false} onClick={()=>addDep(d)}/>
-                ))}
-              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{DEPS_SUG.filter(d=>!rice.deps.includes(d)).map(d=><Chip key={d} label={d} active={false} onClick={()=>addDep(d)}/>)}</div>
             </div>
             {rice.deps.length>0 && (
               <div>
                 <span style={labelStyle}>SELEZIONATI — {rice.deps.length} pacchetti</span>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                   {rice.deps.map(d=>(
-                    <button key={d} onClick={()=>remDep(d)} style={{
-                      display:"flex", alignItems:"center", gap:6,
-                      padding:"3px 10px", fontSize:11, fontFamily:C.mono,
-                      cursor:"pointer", border:`1px solid ${C.fn}44`,
-                      background:C.fn+"10", color:C.fn, transition:"all .15s",
-                    }}>{d} <span style={{ opacity:.5 }}>×</span></button>
+                    <button key={d} onClick={()=>remDep(d)} style={{ display:"flex", alignItems:"center", gap:6, padding:"3px 10px", fontSize:11, fontFamily:C.mono, cursor:"pointer", border:`1px solid ${C.fn}44`, background:C.fn+"10", color:C.fn, transition:"all .15s" }}>{d} <span style={{ opacity:.5 }}>×</span></button>
                   ))}
                 </div>
               </div>
@@ -2157,99 +1718,45 @@ function UploadPage({ trustLevel = 1 }) {
           </div>
         )}
 
-        {/* ── STEP 4: file ── */}
         {step===4 && (
           <div style={{ display:"flex", flexDirection:"column", gap:16, animation:"fadeIn .2s ease" }}>
             <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// carica i file del rice</div>
-
-            {/* dropzone */}
-            <div
-              onDragOver={e=>{e.preventDefault();setDragging(true);}}
-              onDragLeave={()=>setDragging(false)}
-              onDrop={e=>{e.preventDefault();setDragging(false);addFiles(e.dataTransfer.files);}}
-              onClick={()=>fileRef.current?.click()}
-              style={{
-                border:`1px dashed ${dragging?C.white:C.border}`,
-                padding:"36px 24px", textAlign:"center", cursor:"pointer",
-                background: dragging?"#ffffff06":"transparent",
-                transition:"all .2s",
-              }}
-            >
+            <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);addFiles(e.dataTransfer.files);}} onClick={()=>fileRef.current?.click()}
+              style={{ border:`1px dashed ${dragging?C.white:C.border}`, padding:"36px 24px", textAlign:"center", cursor:"pointer", background:dragging?"#ffffff06":"transparent", transition:"all .2s" }}>
               <div style={{ fontSize:20, color:C.gray3, marginBottom:10 }}>+</div>
-              <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, marginBottom:4 }}>
-                trascina i file qui, oppure <span style={{ color:C.white }}>sfoglia</span>
-              </p>
-              <p style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>
-                .conf .toml .lua .sh .png .jpg .ttf — qualsiasi file di config
-              </p>
+              <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, marginBottom:4 }}>trascina i file qui, oppure <span style={{ color:C.white }}>sfoglia</span></p>
+              <p style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>.conf .toml .lua .sh .png .jpg .ttf — qualsiasi file di config</p>
               <input ref={fileRef} type="file" multiple style={{ display:"none" }} onChange={e=>addFiles(e.target.files)}/>
             </div>
-
-            {/* struttura consigliata */}
             <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, padding:"14px 16px" }}>
               <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:10 }}>STRUTTURA CONSIGLIATA</div>
-              <pre style={{ fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9, margin:0 }}>{`dotfiles/
-├── ${rice.wm||"wm"}/
-│   └── config
-├── waybar/
-│   ├── config
-│   └── style.css
-├── ${rice.terminal||"terminal"}/
-wallpaper.png
-.${rice.shell||"shell"}rc
-install.sh        ← generato automaticamente`}</pre>
+              <pre style={{ fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9, margin:0 }}>{`dotfiles/\n├── ${rice.wm||"wm"}/\n│   └── config\n├── waybar/\n│   ├── config\n│   └── style.css\n├── ${rice.terminal||"terminal"}/\nwallpaper.png\n.${rice.shell||"shell"}rc\ninstall.sh`}</pre>
             </div>
-
-            {/* file list */}
             {files.length>0 && (
               <div>
-                <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:8 }}>
-                  {files.length} FILE · {fmtSize(files.reduce((a,f)=>a+f.size,0))} totali
-                </div>
+                <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:8 }}>{files.length} FILE · {fmtSize(files.reduce((a,f)=>a+f.size,0))} totali</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                  {files.map(f=>{
-                    const tag = fileTag(f.name);
-                    return (
-                      <div key={f.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 12px", border:`1px solid ${C.border}`, background:C.bgDeep }}>
-                        <span style={{ fontSize:9, fontFamily:C.mono, padding:"1px 6px", border:`1px solid ${tag.c}44`, color:tag.c, flexShrink:0 }}>{tag.l}</span>
-                        <span style={{ fontSize:11, fontFamily:C.mono, color:C.gray1, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>{f.name}</span>
-                        <span style={{ fontSize:10, color:C.gray3, flexShrink:0 }}>{fmtSize(f.size)}</span>
-                        <button onClick={()=>remFile(f.name)} style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:14, padding:"0 4px" }}>×</button>
-                      </div>
-                    );
-                  })}
+                  {files.map(f=>{ const tag=fileTag(f.name); return (
+                    <div key={f.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"7px 12px", border:`1px solid ${C.border}`, background:C.bgDeep }}>
+                      <span style={{ fontSize:9, fontFamily:C.mono, padding:"1px 6px", border:`1px solid ${tag.c}44`, color:tag.c, flexShrink:0 }}>{tag.l}</span>
+                      <span style={{ fontSize:11, fontFamily:C.mono, color:C.gray1, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>{f.name}</span>
+                      <span style={{ fontSize:10, color:C.gray3, flexShrink:0 }}>{fmtSize(f.size)}</span>
+                      <button onClick={()=>remFile(f.name)} style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:14, padding:"0 4px" }}>×</button>
+                    </div>
+                  ); })}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ── NAV BUTTONS ── */}
         <div style={{ display:"flex", justifyContent:"space-between", marginTop:32, paddingTop:20, borderTop:`1px solid ${C.border}` }}>
-          <button onClick={()=>setStep(s=>s-1)} disabled={step===0} className="bg" style={{
-            padding:"9px 20px", border:`1px solid ${C.border}`,
-            background:"transparent", color:step===0?C.gray3:C.gray2,
-            cursor:step===0?"default":"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s",
-          }}>← indietro</button>
-
-          <button
-            onClick={()=>step<4?setStep(s=>s+1):handlePublish()}
-            disabled={!canNext}
-            className={canNext?"bs":""}
-            style={{
-              padding:"9px 24px", border:`1px solid ${canNext?C.borderHi:C.border}`,
-              background:"transparent", color:canNext?C.white:C.gray3,
-              cursor:canNext?"pointer":"default", fontSize:11, fontFamily:C.mono,
-              fontWeight:500, transition:"all .15s",
-            }}
-          >{step<4?"avanti →":publishing?"pubblicazione...":"pubblica rice"}</button>
+          <button onClick={()=>setStep(s=>s-1)} disabled={step===0} className="bg" style={{ padding:"9px 20px", border:`1px solid ${C.border}`, background:"transparent", color:step===0?C.gray3:C.gray2, cursor:step===0?"default":"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>← indietro</button>
+          <button onClick={()=>step<4?setStep(s=>s+1):handlePublish()} disabled={!canNext} className={canNext?"bs":""} style={{ padding:"9px 24px", border:`1px solid ${canNext?C.borderHi:C.border}`, background:"transparent", color:canNext?C.white:C.gray3, cursor:canNext?"pointer":"default", fontSize:11, fontFamily:C.mono, fontWeight:500, transition:"all .15s" }}>
+            {step<4?"avanti →":publishing?"pubblicazione...":"pubblica rice"}
+          </button>
         </div>
-
       </div>
-
-      {/* ── SIDEBAR ── */}
-
-
       </div>
     </div>
   );
@@ -2257,19 +1764,15 @@ install.sh        ← generato automaticamente`}</pre>
 
 /* ── APP ─────────────────────────────────────────────────────────── */
 export default function App() {
-  const [page, setPage]         = useState("home");
-  const [selected, setSelected] = useState(null);
+  const [page, setPage]               = useState("home");
+  const [selected, setSelected]       = useState(null);
   const [profileAuthor, setProfileAuthor] = useState(null);
   const { user } = useUser();
-const isLoggedIn = !!user; /* → Clerk session in produzione */
-  const trustLevel = 1;     /* 0=member 1=trusted 2=senior 3=staff */
+  const isLoggedIn = !!user;
+  const trustLevel = 1;
 
   const scrollTop = () => {
-    /* the content sits in a fixed div — find it and reset its scroll */
-    const els = [
-      document.getElementById("docs-scroll"),
-      document.querySelector("[style*='position: fixed'][style*='overflow']"),
-    ];
+    const els = [document.getElementById("docs-scroll"), document.querySelector("[style*='position: fixed'][style*='overflow']")];
     els.forEach(el => { if (el) el.scrollTop = 0; });
     window.scrollTo(0, 0);
   };
@@ -2282,14 +1785,9 @@ const isLoggedIn = !!user; /* → Clerk session in produzione */
   const NAVBAR_H = 44;
   const FOOTER_H = 52;
 
-  // Add viewport meta on mount for proper mobile scaling
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) {
-      meta = document.createElement('meta');
-      meta.name = 'viewport';
-      document.head.appendChild(meta);
-    }
+    if (!meta) { meta = document.createElement('meta'); meta.name='viewport'; document.head.appendChild(meta); }
     meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
   }, []);
 
@@ -2304,38 +1802,26 @@ const isLoggedIn = !!user; /* → Clerk session in produzione */
     <>
       <style>{GS}</style>
 
-      {/* ── NAVBAR: always fixed at top ── */}
       <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:200 }}>
         <Navbar page={page} setPage={setPage} isLoggedIn={isLoggedIn} onLogout={logout}/>
       </div>
 
-      {/* ── FOOTER: always fixed at bottom ── */}
       <div style={{ position:"fixed", bottom:0, left:0, right:0, zIndex:200 }}>
         <Footer/>
       </div>
 
-      {/* ── CONTENT: fills space between navbar and footer ── */}
-      <div className="content-area" style={{
-        position:"fixed",
-        top: NAVBAR_H,
-        bottom: FOOTER_H,
-        left:0, right:0,
-        overflowY: "auto",
-        background: C.bg,
-        display:"flex", flexDirection:"column",
-      }}>
+      <div className="content-area" style={{ position:"fixed", top:NAVBAR_H, bottom:FOOTER_H, left:0, right:0, overflowY:"auto", background:C.bg, display:"flex", flexDirection:"column" }}>
         <PageShell>
-          {page==="home"   && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}}/>}
-          {page==="detail" && selected && <DetailPage rice={selected} onBack={back} onProfile={()=>{ setProfileAuthor(selected.author); setPage("pubprofile"); scrollTop(); }}/>}
-          {page==="upload" && (isLoggedIn ? <UploadPage trustLevel={trustLevel}/> : <UploadGate onLogin={()=>{window.location.href='/sign-in';scrollTop();}}/>)}
-          {page==="auth"   && <AuthPage onBack={()=>{setPage("home");scrollTop();}} onLogin={login}/>}
-          {page==="docs"    && <DocsPage/>}
-          {page==="about"   && <AboutPage onProfile={author=>{ setProfileAuthor(author); setPage("pubprofile"); scrollTop(); }}/>}
+          {page==="home"       && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}}/>}
+          {page==="detail"     && selected && <DetailPage rice={selected} onBack={back} onProfile={()=>{ setProfileAuthor(selected.author); setPage("pubprofile"); scrollTop(); }}/>}
+          {page==="upload"     && (isLoggedIn ? <UploadPage trustLevel={trustLevel}/> : <UploadGate onLogin={()=>{window.location.href='/sign-in';scrollTop();}}/>)}
+          {page==="auth"       && <AuthPage onBack={()=>{setPage("home");scrollTop();}} onLogin={login}/>}
+          {page==="docs"       && <DocsPage/>}
+          {page==="about"      && <AboutPage onProfile={author=>{ setProfileAuthor(author); setPage("pubprofile"); scrollTop(); }}/>}
           {page==="profile"    && <ProfilePage onNav={setPage}/>}
           {page==="pubprofile" && <PublicProfilePage author={profileAuthor} onBack={()=>{setPage("detail");scrollTop();}} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
         </PageShell>
       </div>
-
     </>
   );
 }
