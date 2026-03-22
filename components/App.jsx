@@ -802,10 +802,10 @@ function DocsPage() {
           <P>Il backup delle tue configurazioni viene salvato automaticamente in <code style={{color:C.fn}}>~/.rice-backup/YYYYMMDD-HHMMSS/</code> prima di qualsiasi modifica.</P>
           <Block>
             <div style={{ color:C.gray3, fontStyle:"italic", marginBottom:8 }}>// sistema di trust</div>
-            <div style={{ marginBottom:6 }}><Badge label="larva" color={C.gray2}/>account nuovo — rice in revisione</div>
-            <div style={{ marginBottom:6 }}><Badge label="ragno" color={C.kw}/>email verificata + 1 rice approvato</div>
-            <div style={{ marginBottom:6 }}><Badge label="ragno.senior" color={C.fn}/>5 rice approvati + 100 installs</div>
-            <div><Badge label="curator" color={C.string}/>50 segnalazioni corrette</div>
+            <div style={{ marginBottom:6 }}><Badge label="member" color={C.gray2}/>account nuovo — rice in revisione</div>
+            <div style={{ marginBottom:6 }}><Badge label="trusted" color={C.kw}/>email verificata + 1 rice approvato</div>
+            <div style={{ marginBottom:6 }}><Badge label="senior" color={C.fn}/>5 rice approvati + 100 installs</div>
+            <div><Badge label="staff" color={C.string}/>50 segnalazioni corrette</div>
           </Block>
         </Sec>
 
@@ -820,9 +820,9 @@ function DocsPage() {
           <P>Il file <code style={{color:C.fn}}>meta.json</code> e lo script <code style={{color:C.fn}}>install.sh</code> vengono generati automaticamente. Non devi scriverli a mano.</P>
           <Block>
             <div style={{ color:C.gray3, fontStyle:"italic", marginBottom:8 }}>// limiti per trust level</div>
-            <KV k="larva"        v="upload bloccato — verifica email"/>
-            <KV k="ragno"        v="max 2 upload/giorno · in revisione"/>
-            <KV k="ragno.senior" v="illimitato · pubblicazione diretta"/>
+            <KV k="member"        v="upload bloccato — verifica email"/>
+            <KV k="trusted"        v="max 2 upload/giorno · in revisione"/>
+            <KV k="senior" v="illimitato · pubblicazione diretta"/>
           </Block>
           <P>Dimensione massima per rice: <code style={{color:C.string}}>50 MB</code>. Estensioni non permesse: <code style={{color:C.string}}>.exe .bin</code> nella root.</P>
         </Sec>
@@ -936,7 +936,7 @@ function UploadGate({ onLogin }) {
             <div>
               <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
               dopo la verifica email ricevi il badge{" "}
-              <span style={{ fontSize:9, border:`1px solid ${C.gray2}55`, color:C.gray2, padding:"1px 7px", fontFamily:C.mono }}>larva</span>
+              <span style={{ fontSize:9, border:`1px solid ${C.gray2}55`, color:C.gray2, padding:"1px 7px", fontFamily:C.mono }}>member</span>
               {" "}e puoi iniziare a caricare.
             </div>
           </div>
@@ -1053,7 +1053,7 @@ function AuthPage({ onBack, onLogin }) {
             </div>
             <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, lineHeight:2, marginBottom:20 }}>
               <span style={{ fontStyle:"italic" }}>// </span>
-              dopo la verifica potrai accedere e caricare il tuo primo rice come <span style={{ color:C.fn }}>larva</span>.
+              dopo la verifica potrai accedere e caricare il tuo primo rice come <span style={{ color:C.fn }}>member</span>.
             </div>
             <button onClick={onBack} className="bs" style={{ width:"100%", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s" }}>
               torna alla home →
@@ -1220,7 +1220,7 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
   /* mock data — in produzione verrà da Supabase */
   const PROFILE = {
     username:    author,
-    badge:       "ragno.senior",
+    badge:       "senior",
     badgeColor:  "#7a90a8",
     joined:      "marzo 2026",
     bio:         "linux enjoyer. catppuccin addict. hyprland forever.",
@@ -1234,9 +1234,9 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
   const displayRices = USER_RICES.length > 0 ? USER_RICES : RICES.slice(0, 3);
 
   const BADGES = [
-    { label:"ragno.senior",  color:"#7a90a8" },
+    { label:"senior",  color:"#7a90a8" },
     { label:"early.adopter", color:"#b5a07a" },
-    { label:"tela.d'oro",    color:"#7a9a7a" },
+    { label:"top.rice",    color:"#7a9a7a" },
   ];
 
   return (
@@ -1377,81 +1377,59 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
 
 /* ── PROFILE PAGE ────────────────────────────────────────────────── */
 function ProfilePage({ onNav }) {
+  const { user } = useUser();
+  const [rices, setRices] = useState([]);
   const [tab, setTab] = useState("rice");
 
-  const USER = {
-    username:  "velvet_void",
-    joined:    "marzo 2026",
-    badge:     "ragno.senior",
-    badgeColor: "#7a90a8",
-    installs:  5621,
-    likes:     1847,
-    riceCount: 4,
-  };
+  useEffect(() => {
+    if (!user) return;
+    // Carica i rice dell'utente da Supabase
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase
+        .from('rice')
+        .select('*')
+        .eq('author_id', user.id)
+        .then(({ data }) => setRices(data || []));
+    });
+  }, [user]);
 
-  const USER_RICES = RICES.filter((_, i) => i < 4);
+  if (!user) return null;
 
-  const BADGES = [
-    { label:"ragno.senior", color:"#7a90a8", desc:"5 rice approvati + 100 installs" },
-    { label:"early.adopter",color:"#b5a07a", desc:"tra i primi 100 utenti" },
-    { label:"tela.d'oro",   color:"#7a9a7a", desc:"1000+ installs su un rice" },
-  ];
-
-  const ACTIVITY = [
-    { type:"upload",  text:"ha caricato catppuccin-mocha-hypr",  time:"2 giorni fa" },
-    { type:"install", text:"1000° installazione su tokyo-night",  time:"5 giorni fa" },
-    { type:"upload",  text:"ha caricato rose-pine-hypr",          time:"2 settimane fa" },
-    { type:"badge",   text:"badge tela.d'oro sbloccato",          time:"2 settimane fa" },
-    { type:"upload",  text:"ha caricato nord-minimal",            time:"1 mese fa" },
-  ];
-
-  const typeColor = t => t==="upload"?C.fn:t==="badge"?C.string:C.kw;
-  const typeIcon  = t => t==="upload"?"↑":t==="badge"?"★":"↓";
+  const BADGES = [{ label:"early.adopter", color:"#b5a07a" }];
 
   return (
     <div style={{ overflowY:"auto", flex:1, padding:"32px 32px 48px", animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
 
-        {/* ── HEADER ── */}
         <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>
           // profilo utente
         </div>
 
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:16, marginBottom:28, paddingBottom:24, borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:24, marginBottom:28, paddingBottom:24, borderBottom:`1px solid ${C.border}` }}>
           <div>
-            {/* username + badge */}
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
               <span style={{ fontFamily:C.display, fontSize:"clamp(24px,4vw,36px)", fontWeight:800, color:C.white, letterSpacing:"-0.03em" }}>
-                @{USER.username}
+                @{user.username || user.firstName}
               </span>
-              <span style={{ fontSize:9, border:`1px solid ${USER.badgeColor}55`, color:USER.badgeColor, padding:"2px 9px", fontFamily:C.mono }}>
-                {USER.badge}
+              <span style={{ fontSize:9, border:`1px solid #7a90a855`, color:"#7a90a8", padding:"2px 9px", fontFamily:C.mono }}>
+                trusted
               </span>
             </div>
             <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, marginBottom:16 }}>
-              <span style={{ fontStyle:"italic" }}>// </span>membro da {USER.joined}
+              <span style={{ fontStyle:"italic" }}>// </span>membro da {new Date(user.createdAt).toLocaleDateString('it-IT', { month:'long', year:'numeric' })}
             </div>
-
-            {/* badges */}
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
               {BADGES.map(b=>(
-                <div key={b.label} title={b.desc} style={{
-                  fontSize:9, border:`1px solid ${b.color}44`,
-                  color:b.color, padding:"2px 9px", fontFamily:C.mono,
-                  cursor:"default",
-                }}>
-                  {b.label}
-                </div>
+                <div key={b.label} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 9px", fontFamily:C.mono }}>{b.label}</div>
               ))}
             </div>
           </div>
 
-          {/* stats */}
           <div style={{ display:"flex", gap:24, alignItems:"flex-start" }}>
             {[
-              { v:USER.riceCount, l:"rice" },
-              { v:fmt(USER.installs), l:"installs" },
-              { v:USER.likes,     l:"likes" },
+              { v:rices.length, l:"rice" },
+              { v:rices.reduce((a,r)=>a+(r.installs||0),0), l:"installs" },
+              { v:rices.reduce((a,r)=>a+(r.likes||0),0), l:"likes" },
             ].map(s=>(
               <div key={s.l} style={{ textAlign:"right" }}>
                 <div style={{ fontSize:22, fontWeight:600, color:C.white, fontFamily:C.mono }}>{s.v}</div>
@@ -1461,143 +1439,67 @@ function ProfilePage({ onNav }) {
           </div>
         </div>
 
-        {/* ── TABS ── */}
         <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
-          {[["rice","rice pubblicati"],["activity","attività"],["settings","impostazioni"]].map(([t,label])=>(
+          {[["rice","rice pubblicati"],["settings","impostazioni"]].map(([t,label])=>(
             <button key={t} className="tb" onClick={()=>setTab(t)} style={{
               padding:"8px 16px", background:"none", border:"none",
               borderBottom: tab===t ? `1px solid ${C.white}` : "1px solid transparent",
               color: tab===t ? C.white : C.gray2,
-              cursor:"pointer", fontSize:11, fontFamily:C.mono,
-              marginBottom:-1, transition:"color .15s",
+              cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1,
             }}>{label}</button>
           ))}
         </div>
 
-        {/* ── TAB: RICE ── */}
         {tab==="rice" && (
           <div style={{ animation:"fadeIn .2s ease" }}>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 }}>
-              {USER_RICES.map((r,i)=>(
-                <div key={r.id} className="card" onClick={()=>{}} style={{
-                  border:`1px solid ${C.border}`, background:C.bgCard,
-                  cursor:"pointer", overflow:"hidden", transition:"all .2s",
-                  animation:`fadeUp .3s ease ${i*.06}s both`,
-                }}>
-                  <Thumb rice={r}/>
-                  <div style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div className="ct" style={{ fontSize:12, color:C.white, fontWeight:500, transition:"color .15s" }}>{r.title}</div>
-                      {r.featured && <span style={{ fontSize:9, color:C.string, border:`1px solid ${C.string}40`, padding:"1px 6px" }}>top</span>}
-                    </div>
-                    <div style={{ fontSize:10, color:C.gray2 }}>
-                      <span style={{ color:C.kw }}>{r.wm}</span>
-                      <span style={{ margin:"0 5px" }}>·</span>{r.distro}
-                    </div>
-                    <div style={{ display:"flex", gap:12, paddingTop:6, borderTop:`1px solid ${C.border}`, fontSize:10, color:C.gray2 }}>
-                      <span>♥ {fmt(r.likes)}</span>
-                      <span>↓ {fmt(r.installs)}</span>
-                    </div>
+            {rices.length === 0 ? (
+              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>
+                // nessun rice pubblicato ancora
+              </div>
+            ) : (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 }}>
+                {rices.map((r,i)=>(
+                  <div key={r.id} style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"14px", animation:`fadeUp .3s ease ${i*.06}s both` }}>
+                    <div style={{ fontSize:12, color:C.white, marginBottom:4 }}>{r.title}</div>
+                    <div style={{ fontSize:10, color:C.gray2 }}>{r.wm} · {r.distro}</div>
                   </div>
-                </div>
-              ))}
-
-              {/* upload new card */}
-              <div onClick={()=>onNav("upload")} style={{
-                border:`1px dashed ${C.border}`, background:"transparent",
-                cursor:"pointer", overflow:"hidden", transition:"all .2s",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                minHeight:200, flexDirection:"column", gap:10,
-              }}
-                className="card"
-                onMouseEnter={e=>{e.currentTarget.style.borderColor=C.borderHi;}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;}}
-              >
-                <span style={{ fontSize:24, color:C.gray3 }}>+</span>
-                <span style={{ fontSize:11, fontFamily:C.mono, color:C.gray3 }}>carica nuovo rice</span>
+                ))}
               </div>
-            </div>
+            )}
+            <div onClick={()=>onNav("upload")} style={{
+              border:`1px dashed ${C.border}`, marginTop:12,
+              cursor:"pointer", padding:"24px", textAlign:"center",
+              fontSize:11, fontFamily:C.mono, color:C.gray3,
+            }}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHi}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
+            >+ carica nuovo rice</div>
           </div>
         )}
 
-        {/* ── TAB: ACTIVITY ── */}
-        {tab==="activity" && (
-          <div style={{ animation:"fadeIn .2s ease" }}>
-            <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>
-              // attività recente
-            </div>
-            {ACTIVITY.map((a,i)=>(
-              <div key={i} style={{
-                display:"flex", gap:14, alignItems:"flex-start",
-                padding:"12px 0", borderBottom:`1px solid ${C.border}`,
-                animation:`fadeUp .2s ease ${i*.05}s both`,
-              }}>
-                <span style={{
-                  fontSize:10, fontFamily:C.mono,
-                  color:typeColor(a.type),
-                  border:`1px solid ${typeColor(a.type)}44`,
-                  padding:"1px 7px", flexShrink:0, marginTop:1,
-                }}>{typeIcon(a.type)}</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:12, color:C.gray1, fontFamily:C.mono, marginBottom:3 }}>{a.text}</div>
-                  <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>{a.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── TAB: SETTINGS ── */}
         {tab==="settings" && (
-          <div style={{ animation:"fadeIn .2s ease", display:"flex", flexDirection:"column", gap:16, maxWidth:480 }}>
-            <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:4 }}>
-              // impostazioni account
-            </div>
-
+          <div style={{ animation:"fadeIn .2s ease", maxWidth:480 }}>
+            <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>// impostazioni account</div>
             {[
-              { label:"USERNAME", val:"velvet_void", editable:false, note:"non modificabile" },
-              { label:"EMAIL", val:"velvet@example.com", editable:true },
-              { label:"SITO WEB", val:"", editable:true, placeholder:"https://..." },
-              { label:"BIO", val:"", editable:true, placeholder:"descrivi il tuo setup..." },
+              { label:"USERNAME", val:user.username||"", editable:false, note:"modifica su Clerk" },
+              { label:"EMAIL", val:user.primaryEmailAddress?.emailAddress||"", editable:false },
             ].map(f=>(
-              <div key={f.label}>
+              <div key={f.label} style={{ marginBottom:14 }}>
                 <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:6, display:"flex", justifyContent:"space-between" }}>
                   <span>{f.label}</span>
-                  {f.note && <span style={{ color:C.gray3, fontStyle:"italic", textTransform:"none", letterSpacing:0 }}>// {f.note}</span>}
+                  {f.note && <span style={{ fontStyle:"italic", textTransform:"none", letterSpacing:0 }}>// {f.note}</span>}
                 </div>
-                <input
-                  defaultValue={f.val}
-                  disabled={!f.editable}
-                  placeholder={f.placeholder||""}
-                  style={{
-                    width:"100%", background:C.bgDeep,
-                    border:`1px solid ${C.border}`,
-                    color: f.editable ? C.white : C.gray3,
-                    padding:"9px 12px", fontSize:12,
-                    fontFamily:C.mono, outline:"none",
-                    cursor: f.editable ? "text" : "default",
-                    opacity: f.editable ? 1 : 0.6,
-                  }}
-                  onFocus={e=>{ if(f.editable) e.target.style.borderColor=C.white; }}
-                  onBlur={e=>e.target.style.borderColor=C.border}
-                />
+                <input defaultValue={f.val} disabled style={{
+                  width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`,
+                  color:C.gray3, padding:"9px 12px", fontSize:12, fontFamily:C.mono, outline:"none", opacity:0.6,
+                }}/>
               </div>
             ))}
-
-            <div style={{ display:"flex", gap:10, paddingTop:8 }}>
-              <button className="bs" style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-                salva modifiche
-              </button>
-            </div>
-
-            <div style={{ height:1, background:C.border, margin:"8px 0" }}/>
-
-            <div>
-              <div style={{ fontSize:9, color:"#a05858", letterSpacing:"0.1em", marginBottom:10 }}>ZONA PERICOLOSA</div>
-              <button className="bg" style={{ padding:"9px 20px", border:`1px solid #a0585844`, background:"transparent", color:"#a05858", cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-                elimina account
-              </button>
-            </div>
+            <div style={{ height:1, background:C.border, margin:"16px 0" }}/>
+            <button onClick={()=>{ import('@clerk/nextjs').then(({useClerk})=>{}); window.location.href='/sign-in'; }} style={{
+              padding:"9px 20px", border:`1px solid #a0585844`, background:"transparent",
+              color:"#a05858", cursor:"pointer", fontSize:11, fontFamily:C.mono,
+            }}>logout</button>
           </div>
         )}
 
@@ -2037,10 +1939,10 @@ function UploadPage({ trustLevel = 1 }) {
       {/* trust level banner */}
       {trustLevel <= 1 && (
         <div style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 16px", border:`1px solid ${C.string}44`, background:`${C.string}08`, marginBottom:16, fontSize:11, fontFamily:C.mono, color:C.string }}>
-          <span style={{ fontSize:9, border:`1px solid ${C.string}55`, padding:"1px 7px", flexShrink:0 }}>larva</span>
+          <span style={{ fontSize:9, border:`1px solid ${C.string}55`, padding:"1px 7px", flexShrink:0 }}>member</span>
           <span style={{ color:C.gray2 }}>
             <span style={{ fontStyle:"italic", color:C.gray3 }}>// </span>
-            il tuo rice andrà in revisione prima di apparire in gallery — livello <span style={{ color:C.string }}>ragno</span> richiede 1 rice approvato e account registrato
+            il tuo rice andrà in revisione prima di apparire in gallery — livello <span style={{ color:C.string }}>trusted</span> richiede 1 rice approvato e account registrato
           </span>
         </div>
       )}
@@ -2317,7 +2219,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [profileAuthor, setProfileAuthor] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false); /* → Clerk session in produzione */
-  const [trustLevel, setTrustLevel] = useState(0);     /* 0=larva 1=ragno 2=senior 3=curator */
+  const [trustLevel, setTrustLevel] = useState(0);     /* 0=member 1=trusted 2=senior 3=staff */
 
   const scrollTop = () => {
     /* the content sits in a fixed div — find it and reset its scroll */
