@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from 'react';
+import { useUser, useClerk } from '@clerk/nextjs';
 
 /* ── TOKENS ─────────────────────────────────────────────────────── */
 const C = {
@@ -533,6 +534,8 @@ function useContainerWidth(ref, breakpoint=700) {
 }
 
 function Navbar({ page, setPage, isLoggedIn, onLogout }) {
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
   const navRef = useRef(null);
   const isMobile = useContainerWidth(navRef, 680);
@@ -571,13 +574,13 @@ function Navbar({ page, setPage, isLoggedIn, onLogout }) {
 
             <div style={{ flex:1 }}/>
 
-            {!isMobile && (isLoggedIn ? (
+            {!isMobile && (user ? (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:16 }}>
-                <button onClick={()=>setPage("profile")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:10, fontFamily:C.mono, color:C.fn, padding:0 }}>@utente</button>
-                <button onClick={onLogout} className="bg" style={{ padding:"4px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>logout</button>
+                <button onClick={()=>setPage("profile")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:10, fontFamily:C.mono, color:C.fn, padding:0 }}>@{user?.username || user?.firstName || "user"}</button>
+                <button onClick={()=>signOut(()=>setPage("home"))} className="bg" style={{ padding:"4px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>logout</button>
               </div>
             ) : (
-              <button className="bs" onClick={()=>setPage("auth")} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginRight:16 }}>login</button>
+            <button className="bs" onClick={()=>window.location.href='/sign-in'} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginRight:16 }}>login</button>
             ))}
 
             {isMobile && (
@@ -607,13 +610,13 @@ function Navbar({ page, setPage, isLoggedIn, onLogout }) {
             }}>{label}</button>
           ))}
           <div style={{ height:1, background:C.border, margin:"8px 0" }}/>
-          {isLoggedIn ? (
+          {user ? (
             <div style={{ display:"flex", gap:10, padding:"8px 20px" }}>
-              <button onClick={()=>{setPage("profile");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn }}>@utente</button>
-              <button onClick={()=>{onLogout();setMenuOpen(false);}} style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono }}>logout</button>
+              <button onClick={()=>{setPage("profile");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn }}>@{user?.username || user?.firstName || "user"}</button>
+              <button onClick={()=>signOut(()=>setPage("home"))} style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono }}>logout</button>
             </div>
           ) : (
-            <button onClick={()=>{setPage("auth");setMenuOpen(false);}} style={{ margin:"4px 20px 12px", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:13, fontFamily:C.mono }}>login →</button>
+            <button onClick={()=>{window.location.href='/sign-in';setMenuOpen(false);}} style={{ margin:"4px 20px 12px", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:13, fontFamily:C.mono }}>login →</button>
           )}
         </div>
       )}
