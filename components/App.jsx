@@ -1191,8 +1191,15 @@ function ProfilePage({ onNav }) {
   const [tab, setTab]     = useState("rice");
 
   // Founder IDs — aggiungi qui gli user ID dei fondatori
-  const FOUNDER_IDS = [];
-  const isFounder = FOUNDER_IDS.includes(user?.id);
+const [isFounder, setIsFounder] = useState(false);
+
+useEffect(() => {
+  if (!user) return;
+  import('../lib/supabase').then(({ supabase }) => {
+    supabase.from('users').select('badge').eq('id', user.id).single()
+      .then(({ data }) => setIsFounder(data?.badge === 'founder'));
+  });
+}, [user]);
 
   useEffect(() => {
     if (!user) return;
