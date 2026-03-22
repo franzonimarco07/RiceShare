@@ -1,6 +1,11 @@
- import { Webhook } from 'svix';
+import { Webhook } from 'svix';
 import { headers } from 'next/headers';
-import { supabase } from '../../../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export async function POST(req) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -30,6 +35,7 @@ export async function POST(req) {
       'svix-signature': svix_signature,
     });
   } catch (err) {
+    console.error('Webhook verification failed:', err);
     return new Response('Invalid webhook signature', { status: 400 });
   }
 
@@ -37,13 +43,19 @@ export async function POST(req) {
     const { id, email_addresses, username } = evt.data;
     const email = email_addresses?.[0]?.email_address;
 
-    await supabase.from('users').insert({
+    const { error } = await supabase.from('users').insert({
+      id,
       clerk_id: id,
       email,
       username: username || `user_${id.slice(-8)}`,
-      badge: 'larva',
+      badge: 'member',
       trust_level: 0,
     });
+
+    if (error) {
+      console.error('Supabase insert error:', error);
+      return new Response(JSON.stringify(error), { status: 500 });
+    }
   }
 
   if (evt.type === 'user.updated') {

@@ -413,16 +413,32 @@ function DetailPage({ rice, onBack, onProfile }) {
 
 /* ── HOMEPAGE ────────────────────────────────────────────────────── */
 function HomePage({ onSelect, onUpload }) {
-  const [view,   setView]   = useState("grid");
-  const [filter, setFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [rices, setRices]     = useState(RICES);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState("");
+  const [wmFilter, setWmFilter] = useState("all");
+  const [view, setView]       = useState("grid");
 
-  const wms = ["all","hyprland","sway","i3wm","bspwm","openbox"];
-  const filtered = RICES.filter(r => {
-    const mf = filter==="all" || r.wm===filter;
-    const ms = !search || r.title.includes(search.toLowerCase()) || r.author.includes(search.toLowerCase());
-    return mf && ms;
-  });
+  useEffect(() => {
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase
+        .from('rice')
+        .select('*')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false })
+        .then(({ data }) => {
+          if (data && data.length > 0) setRices(data);
+          setLoading(false);
+        });
+    });
+  }, []);
+
+const wms = ["all","hyprland","sway","i3wm","bspwm","openbox"];
+const filtered = rices.filter(r => {
+  const mf = wmFilter==="all" || r.wm===wmFilter;
+  const ms = !search || (r.title||"").toLowerCase().includes(search.toLowerCase()) || (r.author||r.slug||"").toLowerCase().includes(search.toLowerCase());
+  return mf && ms;
+});
 
   return (
     <div>
@@ -466,7 +482,7 @@ function HomePage({ onSelect, onUpload }) {
             </div>
           </div>
           <div style={{ display:"flex", gap:28, fontFamily:C.mono }}>
-            {[{v:String(RICES.length),l:"rice"},{v:"12.4k",l:"installs"},{v:"847",l:"autori"}].map(s=>(
+            {[{v:loading?"...":String(rices.length),l:"rice"},{v:"12.4k",l:"installs"},{v:"847",l:"autori"}].map(s=>(
               <div key={s.l} style={{ textAlign:"right" }}>
                 <div style={{ fontSize:22, fontWeight:600, color:C.white }}>{s.v}</div>
                 <div style={{ fontSize:9, color:C.gray3 }}>{s.l}</div>
@@ -492,7 +508,7 @@ function HomePage({ onSelect, onUpload }) {
       {/* filter tabs */}
       <div style={{ padding:"0 32px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center" }}>
         {wms.map(f=>(
-          <button key={f} className="tb" onClick={()=>setFilter(f)} style={{ padding:"9px 14px", background:"none", border:"none", borderBottom:filter===f?`1px solid ${C.white}`:"1px solid transparent", color:filter===f?C.white:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
+          <button key={f} className="tb" onClick={()=>setWmFilter(f)} style={{ padding:"9px 14px", background:"none", border:"none", borderBottom:wmFilter===f?`1px solid ${C.white}`:"1px solid transparent", color:wmFilter===f?C.white:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
             {f==="all"?"*.all":f}
           </button>
         ))}
@@ -503,7 +519,7 @@ function HomePage({ onSelect, onUpload }) {
       {/* cards */}
       <div style={{ padding:"24px 32px 48px" }}>
         {view==="grid" ? (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:14 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:16 }}>
             {filtered.map((r,i)=><RiceCard key={r.id} rice={r} onClick={onSelect} delay={i*.04}/>)}
           </div>
         ) : (
@@ -915,7 +931,7 @@ function DocsPage() {
 /* ── UPLOAD GATE (non loggato) ───────────────────────────────────── */
 function UploadGate({ onLogin }) {
   return (
-    <div style={{ position:"fixed", top:44, bottom:52, left:0, right:0, display:"flex", alignItems:"center", justifyContent:"center", padding:"32px" }}>
+    <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"32px", overflow:"hidden" }}>
       <div style={{ maxWidth:400, width:"100%", textAlign:"center" }}>
         <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>
           // accesso richiesto
@@ -1030,7 +1046,7 @@ function AuthPage({ onBack, onLogin }) {
   const strengthColor = ["",C.gray3,"#a07840",C.kw,C.fn][pwdStrength];
 
   return (
-    <div style={{ position:"fixed", top:44, bottom:52, left:0, right:0, display:"flex", alignItems:"center", justifyContent:"center", padding:"32px" }}>
+    <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"32px", overflow:"hidden" }}>
       <div style={{ width:"100%", maxWidth:400 }}>
 
         {/* back */}
@@ -1240,7 +1256,7 @@ function PublicProfilePage({ author, onBack, onSelectRice }) {
   ];
 
   return (
-    <div style={{ overflowY:"auto", flex:1, animation:"fadeIn .2s ease" }}>
+    <div style={{ animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:900, margin:"0 auto", padding:"32px 32px 48px" }}>
 
         {/* breadcrumb */}
@@ -1398,7 +1414,7 @@ function ProfilePage({ onNav }) {
   const BADGES = [{ label:"early.adopter", color:"#b5a07a" }];
 
   return (
-    <div style={{ overflowY:"auto", flex:1, padding:"32px 32px 48px", animation:"fadeIn .2s ease" }}>
+    <div style={{ padding:"32px 32px 48px", animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
 
         <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>
@@ -1531,7 +1547,7 @@ function AboutPage({ onNav, onProfile }) {
   ];
 
   return (
-    <div style={{ overflowY:"auto", flex:1, animation:"fadeIn .2s ease" }}>
+    <div style={{ animation:"fadeIn .2s ease" }}>
       <div style={{ maxWidth:860, margin:"0 auto", padding:"32px 40px 60px" }}>
 
         {/* ── HEADER ── */}
@@ -1849,6 +1865,7 @@ function SToggle({ label, checked, onChange }) {
 }
 
 function UploadPage({ trustLevel = 1 }) {
+  const { user } = useUser();
   const [step, setStep]         = useState(0);
   const [rice, setRice]         = useState({
     name:"", author:"", description:"",
@@ -1859,6 +1876,7 @@ function UploadPage({ trustLevel = 1 }) {
   const [files, setFiles]       = useState([]);
   const [dragging, setDragging] = useState(false);
   const [done, setDone]         = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const fileRef                 = useRef(null);
 
   const set  = (k,v) => setRice(r=>({...r,[k]:v}));
@@ -1889,8 +1907,10 @@ function UploadPage({ trustLevel = 1 }) {
   const STEPS = ["info","sistema","componenti","dipendenze","file"];
   const canNext = [
     rice.name && (rice.description.length===0 || (rice.description.length>=50&&rice.description.length<=500)),
-    rice.wm,
-    true, true, true,
+    !!rice.wm,
+    true,
+    true,
+    files.length > 0,
   ][step];
 
   const labelStyle = { fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:8, display:"block" };
@@ -1900,8 +1920,30 @@ function UploadPage({ trustLevel = 1 }) {
     fontFamily:C.mono, outline:"none", transition:"border-color .15s",
   };
 
+  const handlePublish = async () => {
+    if (!user) return;
+    setPublishing(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      await supabase.from('rice').insert({
+        title:       rice.name,
+        slug:        `${user.username || user.id}-${rice.name}`.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''),
+        author_id:   user.id,
+        description: rice.description,
+        wm:          rice.wm,
+        distro:      rice.distros?.[0] || '',
+        terminal:    rice.terminal,
+        shell:       rice.shell,
+        deps:        rice.deps,
+        status:      trustLevel <= 1 ? 'pending' : 'approved',
+      });
+    } catch(e) { console.error(e); }
+    setPublishing(false);
+    setDone(true);
+  };
+
   if (done) return (
-    <div style={{ animation:"fadeIn .3s ease", position:"fixed", top:44, bottom:52, left:0, right:0, display:"flex", flexDirection:"column", justifyContent:"center", padding:"40px 32px 48px" }}>
+    <div style={{ animation:"fadeIn .3s ease", flex:1, display:"flex", flexDirection:"column", overflow:"hidden", justifyContent:"center", padding:"40px 32px 48px" }}>
       {/* success */}
       <div style={{ maxWidth:560 }}>
         <div style={{ fontSize:11, color:C.fn, fontFamily:C.mono, marginBottom:16, fontStyle:"italic" }}>
@@ -1935,7 +1977,7 @@ function UploadPage({ trustLevel = 1 }) {
   );
 
   return (
-    <div style={{ animation:"fadeIn .2s ease", position:"fixed", top:44, bottom:52, left:0, right:0, display:"flex", flexDirection:"column", overflowY:"auto", padding:"32px 32px 48px" }}>
+    <div style={{ animation:"fadeIn .2s ease", flex:1, display:"flex", flexDirection:"column", overflow:"hidden", padding:"32px 32px 48px" }}>
       {/* trust level banner */}
       {trustLevel <= 1 && (
         <div style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 16px", border:`1px solid ${C.string}44`, background:`${C.string}08`, marginBottom:16, fontSize:11, fontFamily:C.mono, color:C.string }}>
@@ -1946,8 +1988,8 @@ function UploadPage({ trustLevel = 1 }) {
           </span>
         </div>
       )}
-      <div style={{ display:"flex", gap:24, flex:1, minHeight:0, overflow:"hidden" }}>
-      <div style={{ flex:"0 0 480px", minWidth:0, overflowY:"auto" }}>
+      <div style={{ display:"flex", flex:1, minHeight:0, overflow:"hidden", alignItems:"flex-start", justifyContent:"center" }}>
+      <div style={{ width:"100%", maxWidth:600, overflowY:"auto", height:"100%" }}>
 
         {/* header */}
         <div style={{ marginBottom:32 }}>
@@ -2191,7 +2233,7 @@ install.sh        ← generato automaticamente`}</pre>
           }}>← indietro</button>
 
           <button
-            onClick={()=>step<4?setStep(s=>s+1):setDone(true)}
+            onClick={()=>step<4?setStep(s=>s+1):handlePublish()}
             disabled={!canNext}
             className={canNext?"bs":""}
             style={{
@@ -2200,13 +2242,13 @@ install.sh        ← generato automaticamente`}</pre>
               cursor:canNext?"pointer":"default", fontSize:11, fontFamily:C.mono,
               fontWeight:500, transition:"all .15s",
             }}
-          >{step<4?"avanti →":"pubblica rice"}</button>
+          >{step<4?"avanti →":publishing?"pubblicazione...":"pubblica rice"}</button>
         </div>
 
       </div>
 
       {/* ── SIDEBAR ── */}
-      <div className="desktop-only" style={{flex:1,minWidth:0}}><UploadSidebar step={step} rice={rice} installCmd={installCmd}/></div>
+
 
       </div>
     </div>
@@ -2218,8 +2260,9 @@ export default function App() {
   const [page, setPage]         = useState("home");
   const [selected, setSelected] = useState(null);
   const [profileAuthor, setProfileAuthor] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false); /* → Clerk session in produzione */
-  const [trustLevel, setTrustLevel] = useState(0);     /* 0=member 1=trusted 2=senior 3=staff */
+  const { user } = useUser();
+const isLoggedIn = !!user; /* → Clerk session in produzione */
+  const trustLevel = 1;     /* 0=member 1=trusted 2=senior 3=staff */
 
   const scrollTop = () => {
     /* the content sits in a fixed div — find it and reset its scroll */
@@ -2233,8 +2276,8 @@ export default function App() {
 
   const go     = r => { setSelected(r); setPage("detail"); scrollTop(); };
   const back   = () => { setSelected(null); setPage("home"); scrollTop(); };
-  const login  = () => { setIsLoggedIn(true); setTrustLevel(1); setPage("home"); scrollTop(); };
-  const logout = () => { setIsLoggedIn(false); setTrustLevel(0); scrollTop(); };
+  const login  = () => { setPage("home"); scrollTop(); };
+  const logout = () => { scrollTop(); };
 
   const NAVBAR_H = 44;
   const FOOTER_H = 52;
@@ -2284,7 +2327,7 @@ export default function App() {
         <PageShell>
           {page==="home"   && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}}/>}
           {page==="detail" && selected && <DetailPage rice={selected} onBack={back} onProfile={()=>{ setProfileAuthor(selected.author); setPage("pubprofile"); scrollTop(); }}/>}
-          {page==="upload" && (isLoggedIn ? <UploadPage trustLevel={trustLevel}/> : <UploadGate onLogin={()=>{setPage("auth");scrollTop();}}/>)}
+          {page==="upload" && (isLoggedIn ? <UploadPage trustLevel={trustLevel}/> : <UploadGate onLogin={()=>{window.location.href='/sign-in';scrollTop();}}/>)}
           {page==="auth"   && <AuthPage onBack={()=>{setPage("home");scrollTop();}} onLogin={login}/>}
           {page==="docs"    && <DocsPage/>}
           {page==="about"   && <AboutPage onProfile={author=>{ setProfileAuthor(author); setPage("pubprofile"); scrollTop(); }}/>}
