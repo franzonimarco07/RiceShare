@@ -2980,7 +2980,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
               <div>
                 <span style={labelStyle}>OR PASTE URL</span>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>puoi usare link diretti da imgur, catbox.moe, i.redd.it o qualsiasi host di images. assicurati che il link finisca con .png, .jpg o .webp.
+                  <span style={{color:"#242424"}}>// </span>You can use direct links from imgur, catbox.moe, i.redd.it, or any image host. Make sure the link ends in .png, .jpg, or .webp.
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <input value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
