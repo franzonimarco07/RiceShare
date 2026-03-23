@@ -335,7 +335,7 @@ export default function SignInPage() {
           <div className="rs-topbar">
             <a href="/" className="rs-logo">Riceshare</a>
             <div className="rs-topbar-sep"/>
-            <span className="rs-topbar-comment">// accedi al tuo account</span>
+            <span className="rs-topbar-comment">// sign in to your account</span>
           </div>
 
           {/* Form centrato */}

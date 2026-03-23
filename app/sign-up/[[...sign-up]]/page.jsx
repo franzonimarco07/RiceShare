@@ -209,7 +209,7 @@ export default function SignUpPage() {
           <div className="rs-topbar">
             <a href="/" className="rs-logo">Riceshare</a>
             <div className="rs-topbar-sep"/>
-            <span className="rs-topbar-comment">// crea il tuo account</span>
+            <span className="rs-topbar-comment">// create your account</span>
           </div>
 
           {/* Form centrato */}
