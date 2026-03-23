@@ -2598,9 +2598,35 @@ function UploadPage({ trustLevel=1, onGoHome }) {
     img.src = url;
   });
 
-  // Aggiunge images e campiona colori dalla prima
+  // Converte qualsiasi immagine in WebP downscalata (max 1920px, quality 0.82)
+  const toWebP = (file) => new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1920;
+      let { width: w, height: h } = img;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => {
+        if (!blob) { resolve(file); return; }
+        // Rinomina il file con estensione .webp
+        const name = file.name.replace(/\.[^.]+$/, "") + ".webp";
+        resolve(new File([blob], name, { type:"image/webp" }));
+      }, "image/webp", 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+
+  // Aggiunge images, converte in WebP e campiona colori dalla prima
   const addImagesAndSample = async (newImgs) => {
-    const all = [...rice.images, ...newImgs];
+    // Converti tutto in WebP prima di aggiungere
+    const converted = await Promise.all(Array.from(newImgs).map(toWebP));
+    const all = [...rice.images, ...converted];
     set("images", all);
     // Campiona dalla prima immagine disponibile (cover o prima della lista)
     const target = all[rice.coverIndex >= 0 ? rice.coverIndex : 0];
@@ -2937,16 +2963,16 @@ function UploadPage({ trustLevel=1, onGoHome }) {
                 <div onDragOver={e=>{e.preventDefault();setImgDragging(true);}} onDragLeave={()=>setImgDragging(false)}
                   onDrop={e=>{
                     e.preventDefault(); setImgDragging(false);
-                    const imgs = Array.from(e.dataTransfer.filess).filter(f=>/\.(png|jpg|jpeg|webp)$/i.test(f.name));
+                    const imgs = Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith('image/'));
                     addImagesAndSample(imgs);
                   }}
                   onClick={()=>imgRef.current?.click()}
                   style={{ border:`1px dashed ${imgDragging?C.white:C.border}`, padding:"24px", textAlign:"center", cursor:"pointer", background:imgDragging?"#ffffff06":"transparent", transition:"all .2s" }}>
                   <div style={{ fontSize:18, color:C.gray3, marginBottom:8 }}>+</div>
                   <p style={{ fontSize:11, color:C.gray2, fontFamily:C.mono }}>drag screenshots here, or <span style={{color:C.white}}>browse</span></p>
-                  <p style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, marginTop:4 }}>.png .jpg .jpeg .webp</p>
-                  <input ref={imgRef} type="files" multiple accept="image/*" style={{ display:"none" }}
-                    onChange={e=>{ const imgs=Array.from(e.target.filess); addImagesAndSample(imgs); }}/>
+                  <p style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, marginTop:4 }}>.png .jpg .jpeg .webp → converted to .webp automatically</p>
+                  <input ref={imgRef} type="file" multiple accept="image/*" style={{ display:"none" }}
+                    onChange={e=>{ const imgs=Array.from(e.target.files).filter(f=>f.type.startsWith('image/')); addImagesAndSample(imgs); e.target.value=''; }}/>
                 </div>
               </div>
 
