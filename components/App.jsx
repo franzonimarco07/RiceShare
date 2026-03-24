@@ -565,7 +565,6 @@ function ShareButton({ rice }) {
 /* ── DETAIL PAGE ─────────────────────────────────────────────────── */
 
 const ACHIEVEMENT_BADGES = [
-  { id:"trendsetter",  label:"trendsetter",  color:"#22d3ee", desc:"first to upload a rice for an unseen WM" },
   { id:"popular",      label:"popular",      color:"#fb923c", desc:"rice with 1000+ installs" },
   { id:"viral",        label:"viral",        color:"#f43f5e", desc:"500+ installs within 7 days of upload" },
   { id:"perfectionist",label:"perfectionist",color:"#a3e635", desc:"rice with every field filled in" },
@@ -621,7 +620,6 @@ async function computeBadges(userId, rices, userCreatedAt, supabase) {
     }
   }
 
-  // trendsetter — first to upload a rice for a given WM
   try {
     const { data: allRices } = await supabase
       .from('rice').select('id,author_id,wm,created_at').eq('status','approved')
@@ -631,7 +629,6 @@ async function computeBadges(userId, rices, userCreatedAt, supabase) {
       for (const r of allRices) {
         if (!wmFirst[r.wm]) wmFirst[r.wm] = r.author_id;
       }
-      if (Object.values(wmFirst).some(aid => aid === userId)) earned.add('trendsetter');
     }
   } catch(e) { /* skip if fails */ }
 
@@ -1235,7 +1232,7 @@ function ReportButton({ rice, currentUser }) {
 }
 
 /* ── ADMIN PAGE ──────────────────────────────────────────────────── */
-function AdminPage({ onNav, onSelectRice }) {
+function AdminPage({ onNav, onSelectRice, onSelectUser }) {
   const mobile = useMobile();
   const { user: adminUser } = useUser();
   const [tab, setTab]           = useState("pending");
@@ -1522,7 +1519,7 @@ function AdminPage({ onNav, onSelectRice }) {
               {users.filter(u=>!userSearch||(u.username||"").includes(userSearch)||(u.email||"").includes(userSearch)).map(u=>(
                 <div key={u.id} style={{ border:`1px solid ${u.badge==="banned"?"#a0585844":C.border}`, background:u.badge==="banned"?"#a0585806":C.bgCard, padding:"12px 16px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:12, color:C.fn, fontFamily:C.mono, marginBottom:2 }}>@{u.username||"—"}</div>
+                    <div style={{ fontSize:12, color:C.fn, fontFamily:C.mono, marginBottom:2, cursor:onSelectUser?"pointer":"default", textDecoration:onSelectUser?"underline":"none", textDecorationColor:"#ffffff33", textUnderlineOffset:3 }} onClick={()=>onSelectUser&&onSelectUser(u)}>@{u.username||"—"}</div>
                     <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>{u.email}</div>
                   </div>
                   <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
@@ -2837,7 +2834,7 @@ function ProfilesPage({ onNav, onSelectRice }) {
               <span style={{fontStyle:"italic"}}>// </span>member since {new Date(user.createdAt).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
             </div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-              {(ACHIEVEMENT_BADGES.filter(b => (pubAchievements||[]).includes(b.id))).map(b=>(
+              {earnedBadges.map(b=>(
                 <div key={b.id} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 9px", fontFamily:C.mono }}>{b.label}</div>
               ))}
             </div>
@@ -3803,7 +3800,7 @@ export default function App() {
           {page==="about"      && <AboutPage onProfiles={author=>{ setProfilesAuthor(author); setPage("pubprofiles"); scrollTop(); }}/>}
           {page==="profiles"    && <ProfilesPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
           {page==="pubprofiles" && <PublicProfilesPage author={profilesAuthor} onBack={()=>{setPage(selected?"detail":"home");scrollTop();}} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
-          {page==="admin"       && (userBadge==="founder"||userBadge==="staff") && <AdminPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
+          {page==="admin"       && (userBadge==="founder"||userBadge==="staff") && <AdminPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}} onSelectUser={u=>{setProfilesAuthor(u.username||u.clerk_id);setPage("pubprofiles");scrollTop();}}/>}
         </PageShell>
       </div>
     </>
