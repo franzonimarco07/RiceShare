@@ -563,7 +563,89 @@ function ShareButton({ rice }) {
 }
 
 /* ── DETAIL PAGE ─────────────────────────────────────────────────── */
-function DetailPage({ rice, onBack, onProfiles }) {
+
+const ACHIEVEMENT_BADGES = [
+  { id:"trendsetter",  label:"trendsetter",  color:"#22d3ee", desc:"first to upload a rice for an unseen WM" },
+  { id:"popular",      label:"popular",      color:"#fb923c", desc:"rice with 1000+ installs" },
+  { id:"viral",        label:"viral",        color:"#f43f5e", desc:"500+ installs within 7 days of upload" },
+  { id:"perfectionist",label:"perfectionist",color:"#a3e635", desc:"rice with every field filled in" },
+  { id:"photographer", label:"photographer", color:"#38bdf8", desc:"5+ screenshots on a single rice" },
+  { id:"veteran",      label:"veteran",      color:"#34d399", desc:"account older than 1 year" },
+  { id:"consistent",   label:"consistent",   color:"#f472b6", desc:"published at least 1 rice/month for 3 consecutive months" },
+  { id:"collector",    label:"collector",    color:"#818cf8", desc:"10 approved rice" },
+];
+
+async function computeBadges(userId, rices, userCreatedAt, supabase) {
+  const earned = new Set();
+  const approved = rices.filter(r => r.status === 'approved');
+
+  // veteran — account older than 1 year
+  if (userCreatedAt && (Date.now() - new Date(userCreatedAt).getTime()) > 365 * 24 * 60 * 60 * 1000)
+    earned.add('veteran');
+
+  // collector — 10+ approved rices
+  if (approved.length >= 10) earned.add('collector');
+
+  // popular — any rice with 1000+ installs
+  if (approved.some(r => (r.installs || 0) >= 1000)) earned.add('popular');
+
+  // viral — 500+ installs within 7 days of upload
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  if (approved.some(r => (r.installs || 0) >= 500 && r.created_at &&
+      (Date.now() - new Date(r.created_at).getTime()) <= sevenDaysMs))
+    earned.add('viral');
+
+  // perfectionist — rice with all fields filled
+  if (approved.some(r =>
+    r.description && r.description.trim() &&
+    r.images && r.images.length > 0 &&
+    r.deps && r.deps.length > 0 &&
+    r.tags && r.tags.length > 0 &&
+    r.components && Object.values(r.components).some(Boolean)
+  )) earned.add('perfectionist');
+
+  // photographer — 5+ screenshots
+  if (approved.some(r => r.images && r.images.length >= 5)) earned.add('photographer');
+
+  // consistent — 1 rice/month for 3 consecutive months
+  if (approved.length >= 3) {
+    const months = approved.map(r => {
+      const d = new Date(r.created_at);
+      return d.getFullYear() * 12 + d.getMonth();
+    }).sort((a,b) => a-b);
+    const uniqueMonths = [...new Set(months)];
+    for (let i = 0; i <= uniqueMonths.length - 3; i++) {
+      if (uniqueMonths[i+1] === uniqueMonths[i]+1 && uniqueMonths[i+2] === uniqueMonths[i]+2) {
+        earned.add('consistent'); break;
+      }
+    }
+  }
+
+  // trendsetter — first to upload a rice for a given WM
+  try {
+    const { data: allRices } = await supabase
+      .from('rice').select('id,author_id,wm,created_at').eq('status','approved')
+      .order('created_at', { ascending: true });
+    if (allRices && allRices.length > 0) {
+      const wmFirst = {};
+      for (const r of allRices) {
+        if (!wmFirst[r.wm]) wmFirst[r.wm] = r.author_id;
+      }
+      if (Object.values(wmFirst).some(aid => aid === userId)) earned.add('trendsetter');
+    }
+  } catch(e) { /* skip if fails */ }
+
+  // Sync to user_badges table
+  try {
+    const { data: existing } = await supabase.from('user_badges').select('badge').eq('user_id', userId);
+    const existingSet = new Set((existing||[]).map(b => b.badge));
+    const toInsert = [...earned].filter(b => !existingSet.has(b)).map(b => ({ user_id: userId, badge: b }));
+    if (toInsert.length > 0) await supabase.from('user_badges').insert(toInsert);
+    return [...new Set([...existingSet, ...earned])];
+  } catch(e) { return [...earned]; }
+}
+
+function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge }) {
   const mobile = useMobile();
   const [tab, setTab]       = useState("description");
   const [copied, setCopied] = useState(false);
@@ -672,6 +754,9 @@ function DetailPage({ rice, onBack, onProfiles }) {
       <div style={{ padding:"10px 12px", border:`1px solid ${C.border}`, fontSize:10, color:C.gray3, fontFamily:C.mono, lineHeight:1.7 }}>
         <span style={{fontStyle:"italic"}}>// </span>auto backup in <code style={{color:C.fn}}>~/.rice-backup/</code>
       </div>
+      <div style={{ display:"flex", justifyContent:"flex-end" }}>
+        <ReportButton rice={rice} currentUser={currentUser}/>
+      </div>
     </div>
   );
 
@@ -756,6 +841,9 @@ function DetailPage({ rice, onBack, onProfiles }) {
           <div style={{ fontSize:13, color:C.fn, fontFamily:C.mono }}>@{rice.author}</div>
         </div>
         <button onClick={onProfiles} className="bs" style={{ padding:"7px 14px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>profile →</button>
+      </div>
+      <div style={{ marginTop:8, display:"flex", justifyContent:"flex-end" }}>
+        <ReportButton rice={rice} currentUser={currentUser}/>
       </div>
     </div>
   );
@@ -1032,6 +1120,458 @@ function PrivacyPage({ onNav }) {
   );
 }
 
+/* ── REPORT BUTTON ──────────────────────────────────────────────── */
+function ReportButton({ rice, currentUser }) {
+  const [open, setOpen]       = useState(false);
+  const [reason, setReason]   = useState("");
+  const [custom, setCustom]   = useState("");
+  const [sent, setSent]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const btnRef                = useRef(null);
+
+  const REASONS = [
+    "malicious script / malware",
+    "stolen config — not the author's work",
+    "inappropriate content",
+    "spam or self-promotion",
+    "broken / incomplete rice",
+    "other",
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (btnRef.current && !btnRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const submit = async () => {
+    if (!reason) return;
+    setLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+      await supabase.from('reports').insert({
+        rice_id:    rice.id,
+        reporter_id: currentUser?.id || null,
+        reason:     reason,
+        notes:      reason === "other" ? custom : "",
+        status:     "open",
+      });
+      setSent(true);
+      setTimeout(() => { setSent(false); setOpen(false); setReason(""); setCustom(""); }, 2500);
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  };
+
+  if (!currentUser) return null;
+
+  return (
+    <div ref={btnRef} style={{ position:"relative" }}>
+      <button onClick={()=>setOpen(o=>!o)} style={{
+        background:"none", border:`1px solid ${C.border}`, color:C.gray3,
+        cursor:"pointer", fontSize:10, fontFamily:C.mono, padding:"5px 10px",
+        transition:"all .15s", display:"flex", alignItems:"center", gap:5,
+      }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderColor="#a0585866"; e.currentTarget.style.color="#c07070"; }}
+        onMouseLeave={e=>{ if(!open){ e.currentTarget.style.borderColor=C.border; e.currentTarget.style.color=C.gray3; } }}
+      >
+        ⚑ report
+      </button>
+
+      {open && !sent && (
+        <div style={{
+          position:"absolute", bottom:"calc(100% + 6px)", right:0, zIndex:400,
+          background:C.bgDeep, border:`1px solid ${C.borderHi}`,
+          minWidth:260, boxShadow:"0 8px 24px rgba(0,0,0,0.6)",
+          animation:"fadeUp .15s ease",
+        }}>
+          <div style={{ padding:"8px 14px 7px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>
+            // report this rice
+          </div>
+          {REASONS.map(r=>(
+            <button key={r} onClick={()=>setReason(r)} style={{
+              display:"flex", alignItems:"center", gap:10, width:"100%",
+              padding:"9px 14px", background:reason===r?`${C.string}10`:"transparent",
+              border:"none", borderBottom:`1px solid ${C.border}`,
+              cursor:"pointer", textAlign:"left",
+            }}
+              onMouseEnter={e=>{ if(reason!==r) e.currentTarget.style.background=C.bgCard; }}
+              onMouseLeave={e=>{ if(reason!==r) e.currentTarget.style.background="transparent"; }}
+            >
+              <span style={{ fontSize:9, color:reason===r?C.string:C.gray3, flexShrink:0 }}>{reason===r?"●":"○"}</span>
+              <span style={{ fontSize:11, color:reason===r?C.white:C.gray2, fontFamily:C.mono }}>{r}</span>
+            </button>
+          ))}
+          {reason==="other" && (
+            <div style={{ padding:"8px 14px", borderBottom:`1px solid ${C.border}` }}>
+              <input
+                value={custom}
+                onChange={e=>setCustom(e.target.value)}
+                placeholder="describe the issue..."
+                style={{ width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`, color:C.white, padding:"6px 10px", fontSize:11, fontFamily:C.mono, outline:"none" }}
+              />
+            </div>
+          )}
+          <div style={{ padding:"10px 14px", display:"flex", justifyContent:"flex-end", gap:8 }}>
+            <button onClick={()=>setOpen(false)} style={{ background:"none", border:`1px solid ${C.border}`, color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, padding:"5px 12px" }}>cancel</button>
+            <button onClick={submit} disabled={!reason||loading} style={{
+              background:"transparent", border:`1px solid ${reason?"#a0585866":C.border}`,
+              color:reason?"#c07070":C.gray3, cursor:reason?"pointer":"default",
+              fontSize:10, fontFamily:C.mono, padding:"5px 12px", transition:"all .15s",
+            }}>
+              {loading?"sending...":"send report"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sent && (
+        <div style={{ position:"absolute", bottom:"calc(100% + 6px)", right:0, zIndex:400, background:C.bgDeep, border:`1px solid ${C.fn}44`, padding:"10px 16px", fontSize:11, fontFamily:C.mono, color:C.fn, whiteSpace:"nowrap" }}>
+          ✓ report sent — thank you
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── ADMIN PAGE ──────────────────────────────────────────────────── */
+function AdminPage({ onNav, onSelectRice }) {
+  const mobile = useMobile();
+  const { user: adminUser } = useUser();
+  const [tab, setTab]           = useState("pending");
+  const [reportTab, setReportTab] = useState("open");
+  const [pending, setPending]   = useState([]);
+  const [reports, setReports]   = useState([]);
+  const [history, setHistory]   = useState([]);
+  const [users, setUsers]       = useState([]);
+  const [stats, setStats]       = useState({});
+  const [loading, setLoading]   = useState(true);
+  const [userSearch, setUserSearch] = useState("");
+  const [msg, setMsg]           = useState("");
+
+  const flash = (m) => { setMsg(m); setTimeout(()=>setMsg(""), 3000); };
+
+  const load = async () => {
+    setLoading(true);
+    const { supabase } = await import('../lib/supabase');
+    const [pend, reps, hist, usrs, allRice] = await Promise.all([
+      supabase.from('rice').select('*, users(username)').eq('status','pending').order('created_at',{ascending:false}),
+      supabase.from('reports').select('*, rice(*, users(username)), users!reports_reporter_id_fkey(username)').eq('status','open').order('created_at',{ascending:false}),
+      supabase.from('reports').select('*, rice(id,title), users!reports_reporter_id_fkey(username), resolver:users!reports_resolved_by_fkey(username)').neq('status','open').order('resolved_at',{ascending:false}).limit(100),
+      supabase.from('users').select('*').order('created_at',{ascending:false}),
+      supabase.from('rice').select('id,installs,status'),
+    ]);
+    setPending(pend.data||[]);
+    setReports(reps.data||[]);
+    setHistory(hist.data||[]);
+    setUsers(usrs.data||[]);
+    const rice = allRice.data||[];
+    setStats({
+      totalRice:    rice.length,
+      approved:     rice.filter(r=>r.status==="approved").length,
+      pendingCount: rice.filter(r=>r.status==="pending").length,
+      totalInstalls: rice.reduce((a,r)=>a+(r.installs||0),0),
+      totalUsers:   (usrs.data||[]).length,
+    });
+    setLoading(false);
+  };
+
+  useEffect(()=>{ load(); },[]);
+
+  const approve = async (riceId) => {
+    const { supabase } = await import('../lib/supabase');
+    await supabase.from('rice').update({ status:'approved' }).eq('id', riceId);
+    // Auto-compute badges for the rice author
+    try {
+      const rice = pending.find(r => r.id === riceId);
+      if (rice?.author_id) {
+        const [{ data: authorRices }, { data: userData }] = await Promise.all([
+          supabase.from('rice').select('*').eq('author_id', rice.author_id),
+          supabase.from('users').select('created_at').eq('id', rice.author_id).single(),
+        ]);
+        const updatedRices = (authorRices || []).map(r => r.id === riceId ? {...r, status:'approved'} : r);
+        await computeBadges(rice.author_id, updatedRices, userData?.created_at, supabase);
+      }
+    } catch(e) { /* non-blocking */ }
+    setPending(prev=>prev.filter(r=>r.id!==riceId));
+    flash("✓ rice approved");
+  };
+
+  const reject = async (riceId) => {
+    const { supabase } = await import('../lib/supabase');
+    await supabase.from('rice').update({ status:'rejected' }).eq('id', riceId);
+    setPending(prev=>prev.filter(r=>r.id!==riceId));
+    flash("✓ rice rejected");
+  };
+
+  const deleteRice = async (riceId) => {
+    const { supabase } = await import('../lib/supabase');
+    const now = new Date().toISOString();
+    const adminId = adminUser?.id || null;
+    const affected = reports.filter(r=>r.rice_id===riceId);
+    if (affected.length > 0) {
+      await supabase.from('reports')
+        .update({ status:'resolved', action:'rice_deleted', resolved_at:now, resolved_by:adminId })
+        .eq('rice_id', riceId).eq('status','open');
+      setHistory(prev=>[...affected.map(r=>({...r,status:'resolved',action:'rice_deleted',resolved_at:now})),...prev]);
+      setReports(prev=>prev.filter(r=>r.rice_id!==riceId));
+    }
+    await supabase.from('rice_likes').delete().eq('rice_id', riceId);
+    await supabase.from('rice').delete().eq('id', riceId);
+    flash("✓ rice deleted");
+  };
+
+  const dismissReport = async (reportId) => {
+    const { supabase } = await import('../lib/supabase');
+    const now = new Date().toISOString();
+    const adminId = adminUser?.id || null;
+    await supabase.from('reports')
+      .update({ status:'dismissed', action:'dismissed', resolved_at:now, resolved_by:adminId })
+      .eq('id', reportId);
+    const dismissed = reports.find(r=>r.id===reportId);
+    if (dismissed) setHistory(prev=>[{...dismissed,status:'dismissed',action:'dismissed',resolved_at:now},...prev]);
+    setReports(prev=>prev.filter(r=>r.id!==reportId));
+    flash("✓ report dismissed");
+  };
+
+  const updateUser = async (userId, field, value) => {
+    const { supabase } = await import('../lib/supabase');
+    await supabase.from('users').update({ [field]: value }).eq('id', userId);
+    setUsers(prev=>prev.map(u=>u.id===userId?{...u,[field]:value}:u));
+    flash(`✓ user updated`);
+  };
+
+  const banUser = async (userId) => {
+    const { supabase } = await import('../lib/supabase');
+    await supabase.from('users').update({ badge:'banned', trust_level:-1 }).eq('id', userId);
+    setUsers(prev=>prev.map(u=>u.id===userId?{...u,badge:'banned',trust_level:-1}:u));
+    flash("✓ user banned");
+  };
+
+  const Row = ({ label, value, accent }) => (
+    <div style={{ display:"flex", justifyContent:"space-between", padding:"9px 16px", borderBottom:`1px solid ${C.border}`, fontSize:11, fontFamily:C.mono }}>
+      <span style={{ color:C.gray3 }}>{label}</span>
+      <span style={{ color:accent||C.white, fontWeight:600 }}>{value}</span>
+    </div>
+  );
+
+  const TABS = ["pending","reports","users","stats"];
+
+  return (
+    <div style={{ padding:mobile?"14px 14px 32px":"28px 32px 48px", animation:"fadeIn .2s ease" }}>
+      <div style={{ maxWidth:960, margin:"0 auto" }}>
+
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+          <div>
+            <div style={{ fontSize:10, color:C.string, fontStyle:"italic", fontFamily:C.mono, marginBottom:6 }}>// admin panel</div>
+            <div style={{ fontFamily:C.display, fontSize:"clamp(20px,3vw,30px)", fontWeight:900, color:C.white, letterSpacing:"-0.02em" }}>Control Panel</div>
+          </div>
+          <button onClick={()=>onNav("home")} style={{ background:"none", border:`1px solid ${C.border}`, color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, padding:"6px 14px" }}>← home</button>
+        </div>
+
+        {/* Flash message */}
+        {msg && (
+          <div style={{ padding:"8px 14px", border:`1px solid ${C.fn}44`, background:`${C.fn}08`, fontSize:11, fontFamily:C.mono, color:C.fn, marginBottom:16, animation:"fadeIn .2s ease" }}>
+            {msg}
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
+          {TABS.map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{ padding:"8px 18px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
+              {t}{t==="pending"&&pending.length>0?<span style={{ marginLeft:6, fontSize:9, background:C.string, color:"#111", padding:"1px 5px", borderRadius:8 }}>{pending.length}</span>:null}
+              {t==="reports"&&reports.length>0?<span style={{ marginLeft:6, fontSize:9, background:"#c07070", color:"#111", padding:"1px 5px", borderRadius:8 }}>{reports.length}</span>:null}
+            </button>
+          ))}
+        </div>
+
+        {loading && <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// loading...</div>}
+
+        {/* ── PENDING ── */}
+        {!loading && tab==="pending" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {pending.length===0 ? (
+              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no pending rice — all clear ✓</div>
+            ) : pending.map(r=>(
+              <div key={r.id} style={{ border:`1px solid ${C.border}`, background:C.bgCard, display:"flex", gap:0, overflow:"hidden", animation:"fadeIn .2s ease" }}>
+                {r.cover_url && <img src={r.cover_url} alt="" style={{ width:120, objectFit:"cover", flexShrink:0 }}/>}
+                <div style={{ flex:1, padding:"14px 16px", minWidth:0 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:8 }}>
+                    <div>
+                      <div style={{ fontSize:13, color:C.white, fontFamily:C.mono, fontWeight:500, marginBottom:3 }}>{r.title}</div>
+                      <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono }}>
+                        <span style={{ color:C.fn }}>@{r.users?.username||r.author_id}</span>
+                        <span style={{ color:C.gray3, margin:"0 8px" }}>·</span>
+                        <span style={{ color:C.kw }}>{r.wm}</span>
+                        <span style={{ color:C.gray3, margin:"0 8px" }}>·</span>
+                        {r.distro}
+                      </div>
+                    </div>
+                    <div style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, flexShrink:0 }}>
+                      {new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                    </div>
+                  </div>
+                  {r.description && (
+                    <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.8, marginBottom:10, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
+                      {r.description}
+                    </div>
+                  )}
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <button onClick={()=>approve(r.id)} style={{ padding:"6px 16px", border:`1px solid ${C.fn}66`, background:`${C.fn}10`, color:C.fn, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>✓ approve</button>
+                    <button onClick={()=>reject(r.id)} style={{ padding:"6px 16px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>✕ reject</button>
+                    <button onClick={()=>onSelectRice(normalizeRice(r))} style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>preview →</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── REPORTS ── */}
+        {!loading && tab==="reports" && (
+          <div>
+            <div style={{ display:"flex", gap:0, marginBottom:16, borderBottom:`1px solid ${C.border}` }}>
+              {["open","history"].map(rt=>(
+                <button key={rt} onClick={()=>setReportTab(rt)} style={{ padding:"6px 16px", background:"none", border:"none", borderBottom:reportTab===rt?`1px solid ${C.white}`:"1px solid transparent", color:reportTab===rt?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
+                  {rt}
+                  {rt==="open"&&reports.length>0?<span style={{ marginLeft:5, fontSize:9, background:"#c07070", color:"#111", padding:"1px 5px", borderRadius:8 }}>{reports.length}</span>:null}
+                  {rt==="history"&&history.length>0?<span style={{ marginLeft:5, fontSize:9, background:C.border, color:C.gray2, padding:"1px 5px", borderRadius:8 }}>{history.length}</span>:null}
+                </button>
+              ))}
+            </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {reportTab==="open" && (reports.length===0 ? (
+              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no open reports — all clear ✓</div>
+            ) : reports.map(r=>(
+              <div key={r.id} style={{ border:`1px solid #a0585844`, background:"#a0585806", padding:"14px 16px", animation:"fadeIn .2s ease" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:8 }}>
+                  <div>
+                    <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, marginBottom:4 }}>
+                      <span style={{ color:"#c07070" }}>⚑</span>{" "}
+                      {r.rice ? (
+                        <span
+                          onClick={()=>onSelectRice(normalizeRice(r.rice))}
+                          style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"#c0707066", textUnderlineOffset:3 }}
+                        >{r.rice.title}</span>
+                      ) : r.rice_id}
+                    </div>
+                    <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, marginBottom:4 }}>
+                      <span style={{ color:C.string }}>reason: </span>{r.reason}
+                      {r.notes && <span style={{ color:C.gray3 }}> — {r.notes}</span>}
+                    </div>
+                    <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>
+                      reported by <span style={{ color:C.gray2 }}>@{r.users?.username||"anonymous"}</span>
+                      <span style={{ margin:"0 8px" }}>·</span>
+                      {new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={()=>deleteRice(r.rice_id)} style={{ padding:"5px 14px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:10, fontFamily:C.mono }}>delete rice</button>
+                  <button onClick={()=>dismissReport(r.id)} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>dismiss</button>
+                </div>
+              </div>
+            )))}
+            {reportTab==="history" && (history.length===0 ? (
+              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no resolved reports yet</div>
+            ) : history.map(r=>(
+              <div key={r.id} style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"14px 16px", animation:"fadeIn .2s ease", opacity:0.85 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:6 }}>
+                  <div>
+                    <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, marginBottom:3 }}>
+                      {r.action==="rice_deleted"
+                        ? <span style={{ color:"#c07070" }}>✕ rice deleted</span>
+                        : <span style={{ color:C.gray2 }}>↷ dismissed</span>
+                      }
+                      {" — "}
+                      {r.rice
+                        ? <span onClick={()=>r.rice.id&&onSelectRice&&onSelectRice({...r.rice})} style={{ cursor:r.rice.id?"pointer":"default", textDecoration:r.rice.id?"underline":"none", textDecorationColor:"#ffffff44", textUnderlineOffset:3 }}>{r.rice.title}</span>
+                        : <span style={{ color:C.gray3 }}>{r.rice_id}</span>
+                      }
+                    </div>
+                    <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, marginBottom:3 }}>
+                      <span style={{ color:C.string }}>reason: </span>{r.reason}
+                      {r.notes && <span style={{ color:C.gray3 }}> — {r.notes}</span>}
+                    </div>
+                    <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>
+                      reported by <span style={{ color:C.gray2 }}>@{r.users?.username||"anon"}</span>
+                      {r.resolved_at && <>
+                        <span style={{ margin:"0 8px" }}>·</span>
+                        resolved {new Date(r.resolved_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                        {r.resolver?.username && <> by <span style={{ color:C.gray2 }}>@{r.resolver.username}</span></>}
+                      </>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )))}
+          </div>
+          </div>
+        )}
+
+        {/* ── USERS ── */}
+        {!loading && tab==="users" && (
+          <div>
+            <div style={{ marginBottom:16, display:"flex", alignItems:"center", gap:8, border:`1px solid ${C.border}`, padding:"7px 12px", background:C.bgDeep }}>
+              <span style={{ color:C.gray3, fontSize:11 }}>{">"}</span>
+              <input value={userSearch} onChange={e=>setUserSearch(e.target.value)} placeholder="search username or email..." style={{ background:"none", border:"none", outline:"none", color:C.white, fontSize:11, fontFamily:C.mono, width:"100%" }}/>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {users.filter(u=>!userSearch||(u.username||"").includes(userSearch)||(u.email||"").includes(userSearch)).map(u=>(
+                <div key={u.id} style={{ border:`1px solid ${u.badge==="banned"?"#a0585844":C.border}`, background:u.badge==="banned"?"#a0585806":C.bgCard, padding:"12px 16px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, color:C.fn, fontFamily:C.mono, marginBottom:2 }}>@{u.username||"—"}</div>
+                    <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>{u.email}</div>
+                  </div>
+                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                    {/* Badge selector */}
+                    <select value={u.badge||"member"} onChange={e=>updateUser(u.id,"badge",e.target.value)}
+                      style={{ background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray1, padding:"3px 8px", fontSize:10, fontFamily:C.mono, cursor:"pointer", outline:"none" }}>
+                      {["member","trusted","senior","staff","founder","banned"].map(b=>(
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                    {/* Trust level selector */}
+                    <select value={u.trust_level||0} onChange={e=>updateUser(u.id,"trust_level",parseInt(e.target.value))}
+                      style={{ background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray1, padding:"3px 8px", fontSize:10, fontFamily:C.mono, cursor:"pointer", outline:"none" }}>
+                      {[-1,0,1,2,3].map(l=>(
+                        <option key={l} value={l}>trust {l}</option>
+                      ))}
+                    </select>
+                    {u.badge!=="banned" && (
+                      <button onClick={()=>banUser(u.id)} style={{ padding:"3px 10px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:9, fontFamily:C.mono }}>ban</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── STATS ── */}
+        {!loading && tab==="stats" && (
+          <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"1fr 1fr", gap:16 }}>
+            <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, overflow:"hidden" }}>
+              <div style={{ padding:"8px 16px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// RICE</div>
+              <Row label="total rice"    value={stats.totalRice}    />
+              <Row label="approved"      value={stats.approved}     accent={C.fn}/>
+              <Row label="pending"       value={stats.pendingCount} accent={stats.pendingCount>0?C.string:C.gray2}/>
+              <Row label="total installs" value={fmt(stats.totalInstalls)} accent={C.kw}/>
+            </div>
+            <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, overflow:"hidden" }}>
+              <div style={{ padding:"8px 16px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// USERS</div>
+              <Row label="total users"   value={stats.totalUsers}/>
+              <Row label="open reports"  value={reports.length} accent={reports.length>0?"#c07070":C.gray2}/>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── HOMEPAGE ────────────────────────────────────────────────────── */
 function HomePage({ onSelect, onUpload }) {
   const [rices, setRices]       = useState([]);
@@ -1265,7 +1805,7 @@ function useMobile(breakpoint=640) {
   return mobile;
 }
 
-function Navbar({ page, setPage }) {
+function Navbar({ page, setPage, isAdmin }) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1290,6 +1830,7 @@ function Navbar({ page, setPage }) {
             <div style={{ flex:1 }}/>
             {!isMobile && (user ? (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:16 }}>
+                {isAdmin && <button onClick={()=>setPage("admin")} style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:9, fontFamily:C.mono, padding:"2px 8px" }}>admin</button>}
                 <button onClick={()=>setPage("profiles")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:10, fontFamily:C.mono, color:C.fn, padding:0 }}>@{user?.username || user?.firstName || "user"}</button>
                 <button onClick={()=>signOut(()=>setPage("home"))} className="bg" style={{ padding:"4px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>logout</button>
               </div>
@@ -1309,7 +1850,8 @@ function Navbar({ page, setPage }) {
           ))}
           <div style={{ height:1, background:C.border, margin:"8px 0" }}/>
           {user ? (
-            <div style={{ display:"flex", gap:10, padding:"8px 20px" }}>
+            <div style={{ display:"flex", gap:10, padding:"8px 20px", flexWrap:"wrap" }}>
+              {isAdmin && <button onClick={()=>{setPage("admin");setMenuOpen(false);}} style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:11, fontFamily:C.mono, padding:"4px 10px" }}>admin</button>}
               <button onClick={()=>{setPage("profiles");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn }}>@{user?.username || user?.firstName || "user"}</button>
               <button onClick={()=>signOut(()=>setPage("home"))} style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono }}>logout</button>
             </div>
@@ -1476,11 +2018,16 @@ function DocsPage() {
           </Block>
           <Block>
             <div style={{color:C.gray3,fontStyle:"italic",marginBottom:8}}>// special badges</div>
-            <div style={{marginBottom:8}}><Badge label="early.adopter" color={C.string}/>primi 100 utenti sign up</div>
+            <div style={{marginBottom:8}}><Badge label="early.adopter" color={C.string}/>first 100 users to sign up</div>
             <div style={{marginBottom:8}}><Badge label="core.dev" color={C.kw}/>code contributor</div>
             <div style={{marginBottom:8}}><Badge label="featured" color={C.fn}/>featured rice on homepage</div>
-            <div style={{marginBottom:8}}><Badge label="verified" color={C.white}/>identity verified by the team</div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}><FounderBadge/>founding member of the project</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><FounderBadge/>founding member of the project</div>
+            <div style={{color:C.gray3,fontStyle:"italic",marginBottom:8,marginTop:12}}>// achievement badges</div>
+            {ACHIEVEMENT_BADGES.map(b=>(
+              <div key={b.id} style={{marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+                <Badge label={b.label} color={b.color}/>{b.desc}
+              </div>
+            ))}
           </Block>
         </Sec>
       </div>
@@ -1774,6 +2321,7 @@ function AuthPage({ onBack, onLogin }) {
 function PublicProfilesPage({ author, onBack, onSelectRice }) {
   const mobile = useMobile();
   const [profiles, setProfiles] = useState(null);
+  const [pubAchievements, setPubAchievements] = useState([]);
   const [rices, setRices]     = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1785,6 +2333,8 @@ function PublicProfilesPage({ author, onBack, onSelectRice }) {
           setProfiles(u || { username:author, badge:'member', trust_level:0 });
           if (!u) { setLoading(false); return; }
           // Upload rice approvati di questo autore
+          supabase.from('user_badges').select('badge').eq('user_id', u.id)
+            .then(({ data }) => setPubAchievements((data||[]).map(b=>b.badge)));
           supabase.from('rice').select('*, users(username)').eq('author_id', u.id).eq('status','approved')
             .then(({ data: r }) => { setRices((r||[]).map(normalizeRice)); setLoading(false); });
         });
@@ -2164,14 +2714,20 @@ function ProfilesPage({ onNav, onSelectRice }) {
   const [tab, setTab]             = useState("rice");
   const [isFounder, setIsFounder] = useState(false);
   const [badge, setBadge]         = useState("member");
+  const [achievements, setAchievements] = useState([]);
 
   useEffect(() => {
     if (!user) return;
-    import('../lib/supabase').then(({ supabase }) => {
-      supabase.from('users').select('badge,trust_level').eq('id', user.id).single()
-        .then(({ data }) => { if(data){ setBadge(data.badge||"member"); setIsFounder(data.badge==='founder'); } });
-      supabase.from('rice').select('*, users(username)').eq('author_id', user.id)
-        .then(({ data }) => setRices(data||[]));
+    import('../lib/supabase').then(async ({ supabase }) => {
+      const [{ data: userData }, { data: riceData }] = await Promise.all([
+        supabase.from('users').select('badge,trust_level,created_at').eq('id', user.id).single(),
+        supabase.from('rice').select('*').eq('author_id', user.id),
+      ]);
+      if (userData) { setBadge(userData.badge||'member'); setIsFounder(userData.badge==='founder'); }
+      const myRices = riceData || [];
+      setRices(myRices);
+      const earned = await computeBadges(user.id, myRices, userData?.created_at, supabase);
+      setAchievements(earned);
     });
   }, [user]);
 
@@ -2179,7 +2735,7 @@ function ProfilesPage({ onNav, onSelectRice }) {
 
   const badgeColor = { founder:C.gold, staff:C.string, senior:C.fn, trusted:C.kw, member:C.gray2 }[badge] || C.gray2;
 
-  const BADGES = [{ label:"early.adopter", color:"#b5a07a" }];
+  const earnedBadges = ACHIEVEMENT_BADGES.filter(b => achievements.includes(b.id));
 
   const stats = [
     {v:rices.length, l:"rice"},
@@ -2236,7 +2792,7 @@ function ProfilesPage({ onNav, onSelectRice }) {
           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
             {!isFounder && <span style={{ fontSize:9, border:`1px solid ${badgeColor}55`, color:badgeColor, padding:"1px 7px", fontFamily:C.mono }}>{badge}</span>}
             {isFounder && <FounderBadge/>}
-            {BADGES.map(b=><span key={b.label} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"1px 7px", fontFamily:C.mono }}>{b.label}</span>)}
+            {earnedBadges.map(b=><span key={b.id} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"1px 7px", fontFamily:C.mono }}>{b.label}</span>)}
           </div>
         </div>
         {/* Stats row */}
@@ -2281,8 +2837,8 @@ function ProfilesPage({ onNav, onSelectRice }) {
               <span style={{fontStyle:"italic"}}>// </span>member since {new Date(user.createdAt).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
             </div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-              {BADGES.map(b=>(
-                <div key={b.label} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 9px", fontFamily:C.mono }}>{b.label}</div>
+              {(ACHIEVEMENT_BADGES.filter(b => (pubAchievements||[]).includes(b.id))).map(b=>(
+                <div key={b.id} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 9px", fontFamily:C.mono }}>{b.label}</div>
               ))}
             </div>
           </div>
@@ -2734,6 +3290,15 @@ function UploadPage({ trustLevel=1, onGoHome }) {
         throw new Error(error.message || error.details || error.hint || JSON.stringify(error));
       }
 
+      // Auto-compute badges after upload
+      try {
+        const [{ data: allMyRices }, { data: userData }] = await Promise.all([
+          supabase.from('rice').select('*').eq('author_id', user.id),
+          supabase.from('users').select('created_at').eq('id', user.id).single(),
+        ]);
+        await computeBadges(user.id, allMyRices || [], userData?.created_at, supabase);
+      } catch(e) { /* non-blocking */ }
+
     } catch(e) {
       console.error("publish error:", e.message, e);
       setPubError(e.message || "Errore durante la pubblicazione");
@@ -2980,7 +3545,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
               <div>
                 <span style={labelStyle}>OR PASTE URL</span>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>You can use direct links from imgur, catbox.moe, i.redd.it, or any image host. Make sure the link ends in .png, .jpg, or .webp.
+                  <span style={{color:"#242424"}}>// </span>puoi usare link diretti da imgur, catbox.moe, i.redd.it o qualsiasi host di images. assicurati che il link finisca con .png, .jpg o .webp.
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <input value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
@@ -3179,13 +3744,17 @@ export default function App() {
   const { user } = useUser();
   const isLoggedIn = !!user;
 
-  // Legge trustLevel reale da Supabase
+  // Legge trustLevel e badge reale da Supabase
   const [trustLevel, setTrustLevel] = useState(1);
+  const [userBadge,  setUserBadge]  = useState("member");
   useEffect(() => {
     if (!user) return;
     import('../lib/supabase').then(({ supabase }) => {
-      supabase.from('users').select('trust_level').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.trust_level != null) setTrustLevel(data.trust_level); });
+      supabase.from('users').select('trust_level,badge').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (data?.trust_level != null) setTrustLevel(data.trust_level);
+          if (data?.badge)               setUserBadge(data.badge);
+        });
     });
   }, [user]);
 
@@ -3214,7 +3783,7 @@ export default function App() {
     <>
       <style>{GS}</style>
       <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:200 }}>
-        <Navbar page={page} setPage={setPage}/>
+        <Navbar page={page} setPage={setPage} isAdmin={userBadge==="founder"||userBadge==="staff"}/>
       </div>
       <div style={{ position:"fixed", bottom:0, left:0, right:0, zIndex:200 }}>
         <Footer setPage={setPage}/>
@@ -3222,8 +3791,7 @@ export default function App() {
       <div className="content-area" style={{ position:"fixed", top:44, bottom:52, left:0, right:0, overflowY:"auto", background:C.bg }}>
         <PageShell key={page}>
           {page==="home"       && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}}/>}
-          {page==="detail"     && selected && <DetailPage rice={selected} onBack={back} onProfiles={()=>{
-            // Se il rice appartiene all'utente loggato → apri la sua ProfilesPage, non la pubblica
+          {page==="detail"     && selected && <DetailPage rice={selected} onBack={back} currentUser={user} userBadge={userBadge} onProfiles={()=>{
             const isOwner = user && (user.username === selected.author || user.firstName === selected.author);
             if (isOwner) { setPage("profiles"); scrollTop(); }
             else { setProfilesAuthor(selected.author); setPage("pubprofiles"); scrollTop(); }
@@ -3235,6 +3803,7 @@ export default function App() {
           {page==="about"      && <AboutPage onProfiles={author=>{ setProfilesAuthor(author); setPage("pubprofiles"); scrollTop(); }}/>}
           {page==="profiles"    && <ProfilesPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
           {page==="pubprofiles" && <PublicProfilesPage author={profilesAuthor} onBack={()=>{setPage(selected?"detail":"home");scrollTop();}} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
+          {page==="admin"       && (userBadge==="founder"||userBadge==="staff") && <AdminPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
         </PageShell>
       </div>
     </>
