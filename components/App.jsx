@@ -134,10 +134,9 @@ function PageShell({ children }) {
       setLines(Math.max(20, Math.ceil(contentRef.current.offsetHeight / LINE_H)));
     };
     measure();
-    const t = setTimeout(measure, 50);
     const ro = new ResizeObserver(measure);
     ro.observe(contentRef.current);
-    return () => { clearTimeout(t); ro.disconnect(); };
+    return () => { ro.disconnect(); };
   }, [children]);
 
   return (
@@ -419,6 +418,15 @@ function LikeButton({ rice }) {
       }
       // Aggiorna contatore — ignora errori RLS silenziosamente
       await supabase.from('rice').update({ likes: newCount }).eq('id', rice.id);
+      // Notifica al creatore (solo su like, non su unlike, non su sé stesso)
+      if (newLiked && rice.author_id && rice.author_id !== user.id) {
+        supabase.from('notifications').insert({
+          user_id:   rice.author_id,
+          type:      'like',
+          rice_name: rice.title,
+          message:   `@${user.username || user.firstName} liked your rice`,
+        }).then(()=>{}).catch(()=>{});
+      }
     } catch(e) {
       console.error('like error:', e.message);
       setError(e.message);
@@ -574,6 +582,18 @@ const ACHIEVEMENT_BADGES = [
   { id:"collector",    label:"collector",    color:"#818cf8", desc:"10 approved rice" },
 ];
 
+function BadgeChip({ badge }) {
+  return (
+    <span style={{ display:"inline-block", fontSize:9,
+      border:`1px solid ${badge.color}55`,
+      color:badge.color, padding:"2px 9px", fontFamily:"monospace",
+      cursor:"default", userSelect:"none"
+    }}>
+      {badge.label}
+    </span>
+  );
+}
+
 async function computeBadges(userId, rices, userCreatedAt, supabase) {
   const earned = new Set();
   const approved = rices.filter(r => r.status === 'approved');
@@ -642,7 +662,134 @@ async function computeBadges(userId, rices, userCreatedAt, supabase) {
   } catch(e) { return [...earned]; }
 }
 
-function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge }) {
+/* ── COMMENTS SECTION ─────────────────────────────────────── */
+function CommentsSection({ rice, currentUser }) {
+  const [comments, setComments] = useState([]);
+  const [type, setType]         = useState("comment");
+  const [text, setText]         = useState("");
+  const [sending, setSending]   = useState(false);
+
+  useEffect(() => {
+    import('../lib/supabase').then(async ({ supabase }) => {
+      const { data } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('rice_id', rice.id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      setComments(data || []);
+    });
+  }, [rice.id]);
+
+  const submit = async () => {
+    if (!text.trim() || !currentUser) return;
+    setSending(true);
+    import('../lib/supabase').then(async ({ supabase }) => {
+      const { data, error } = await supabase.from('comments').insert({
+        rice_id:  rice.id,
+        user_id:  currentUser.id,
+        username: currentUser.username || currentUser.firstName,
+        content:  text.trim(),
+        type,
+      }).select().single();
+      if (!error && data) {
+        setComments(prev => [data, ...prev]); setText("");
+        // Notifica al creatore (non su sé stesso)
+        if (rice.author_id && rice.author_id !== currentUser.id) {
+          supabase.from('notifications').insert({
+            user_id:   rice.author_id,
+            type:      type === 'issue' ? 'issue' : 'comment',
+            rice_name: rice.title,
+            message:   `@${currentUser.username || currentUser.firstName} ${type === 'issue' ? 'reported an issue on' : 'commented on'} your rice`,
+          }).then(()=>{}).catch(()=>{});
+        }
+      }
+      setSending(false);
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 9, color: C.gray3, letterSpacing: "0.08em", fontFamily: C.mono, marginBottom: 12 }}>// COMMENTS</div>
+
+      {currentUser && (
+        <div style={{ background: C.bgDeep, border: `1px solid ${C.border}`, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            {[["comment","💬 comment"],["issue","⚠️ report issue"]].map(([v,label]) => (
+              <button key={v} onClick={() => setType(v)} className="tb" style={{
+                padding: "4px 12px", border: `1px solid ${type===v ? C.borderHi : C.border}`,
+                background: type===v ? C.borderHi+"33" : "transparent",
+                color: type===v ? C.white : C.gray2,
+                cursor: "pointer", fontSize: 10, fontFamily: C.mono, transition: "all .15s"
+              }}>{label}</button>
+            ))}
+          </div>
+          {type === "issue" && (
+            <div style={{ fontSize: 10, color: C.string, fontFamily: C.mono, marginBottom: 8, fontStyle: "italic" }}>
+              // visible to everyone · creator can delete once resolved
+            </div>
+          )}
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder={type === "comment" ? "// leave a comment..." : "// describe the issue..."}
+            style={{
+              width: "100%", minHeight: 72, background: C.bg, border: `1px solid ${C.border}`,
+              color: C.white, fontFamily: C.mono, fontSize: 11, padding: "8px 10px",
+              resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.7
+            }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+            <button onClick={submit} disabled={sending || !text.trim()} className="bs" style={{
+              padding: "6px 18px", border: `1px solid ${C.borderHi}`,
+              background: "transparent", color: C.white, cursor: "pointer",
+              fontSize: 10, fontFamily: C.mono,
+              opacity: (!text.trim() || sending) ? 0.4 : 1, transition: "all .15s"
+            }}>{sending ? "sending..." : "send →"}</button>
+          </div>
+        </div>
+      )}
+
+      {!currentUser && (
+        <div style={{ fontSize: 11, color: C.gray3, fontFamily: C.mono, fontStyle: "italic", marginBottom: 16 }}>
+          // sign in to leave a comment
+        </div>
+      )}
+
+      {comments.length === 0 && (
+        <div style={{ fontSize: 11, color: C.gray3, fontFamily: C.mono, fontStyle: "italic", padding: "16px 0" }}>
+          // no comments yet
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {comments.map(c => (
+          <div key={c.id} style={{
+            border: c.type==="issue" ? "1px solid #ef444466" : `1px solid ${C.border}`,
+            borderLeft: c.type==="issue" ? "3px solid #ef4444" : `1px solid ${C.border}`,
+            background: c.type==="issue" ? "#ef444408" : C.bgDeep,
+            padding: "12px 14px"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, fontFamily: C.mono, color: C.fn }}>@{c.username}</span>
+                {c.type === "issue" && (
+                  <span style={{ fontSize: 9, color: "#fff", background: "#ef4444", padding: "2px 7px", fontFamily: C.mono, fontWeight: 600, letterSpacing: "0.05em" }}>⚠ issue</span>
+                )}
+              </div>
+              <span style={{ fontSize: 9, color: C.gray3, fontFamily: C.mono }}>
+                {new Date(c.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+              </span>
+            </div>
+            <p style={{ fontSize: 12, color: C.gray1, fontFamily: C.mono, margin: 0, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{c.content}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagClick }) {
   const mobile = useMobile();
   const [tab, setTab]       = useState("description");
   const [copied, setCopied] = useState(false);
@@ -802,7 +949,20 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge }) {
       {/* Tags */}
       {rice.tags && rice.tags.length > 0 && (
         <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:14 }}>
-          {rice.tags.map(t=><span key={t} style={{ fontSize:10, fontFamily:C.mono, color:C.kw, border:`1px solid ${C.kw}33`, padding:"1px 8px" }}>#{t}</span>)}
+          {rice.tags.map(t=><span key={t} onClick={onTagClick?()=>onTagClick(t):undefined} style={{ fontSize:10, fontFamily:C.mono, color:C.kw, border:`1px solid ${C.kw}33`, padding:"1px 8px", cursor:onTagClick?"pointer":"default", transition:"opacity .15s" }} onMouseEnter={e=>{if(onTagClick)e.currentTarget.style.opacity=".6";}} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>#{t}</span>)}
+        </div>
+      )}
+
+      {/* Palette */}
+      {rice.dots && rice.dots.length > 0 && (
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+          <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// palette</span>
+          <div style={{ display:"flex", gap:5 }}>
+            {rice.dots.map((d,i) => (
+              <div key={i} title={d} style={{ width:16, height:16, background:d, borderRadius:2, border:`1px solid ${d}55` }}/>
+            ))}
+          </div>
+          <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono }}>{rice.dots[0]}</span>
         </div>
       )}
 
@@ -817,6 +977,8 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge }) {
 
       {/* Tabs + content */}
       <TabContent/>
+      <CommentsSection rice={rice} currentUser={currentUser}/>
+      <SimilarRice rice={rice} onSelect={onBack}/>
 
       {/* Stack compact inline */}
       <div style={{ marginTop:16, border:`1px solid ${C.border}`, background:C.bgDeep }}>
@@ -879,7 +1041,7 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge }) {
           </div>
           {rice.tags && rice.tags.length > 0 && (
             <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:8 }}>
-              {rice.tags.map(t=><span key={t} style={{ fontSize:9, fontFamily:C.mono, color:C.kw, border:`1px solid ${C.kw}33`, padding:"1px 8px" }}>#{t}</span>)}
+              {rice.tags.map(t=><span key={t} onClick={onTagClick?()=>onTagClick(t):undefined} style={{ fontSize:9, fontFamily:C.mono, color:C.kw, border:`1px solid ${C.kw}33`, padding:"1px 8px", cursor:onTagClick?"pointer":"default", transition:"opacity .15s" }} onMouseEnter={e=>{if(onTagClick)e.currentTarget.style.opacity=".6";}} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>#{t}</span>)}
             </div>
           )}
         </div>
@@ -901,6 +1063,8 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge }) {
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
           <ImageGallery images={rice.images}/>
           <TabContent/>
+          <CommentsSection rice={rice} currentUser={currentUser}/>
+          <SimilarRice rice={rice} onSelect={onBack}/>
         </div>
         <SidebarContent/>
       </div>
@@ -1005,7 +1169,7 @@ function TermsPage({ onNav }) {
         <LegalLi>Send spam or abuse platform features</LegalLi>
       </LegalSec>
       <LegalSec n="06 — ip" title="Intellectual property">
-        <LegalP>The name "Riceshare", the logo and design are owned by Riceshare. The source code is released as open source — specific licenses are listed in the GitHub repository.</LegalP>
+        <LegalP>The name "Riceshare", the logo and design are owned by Riceshare. Content uploaded by users remains their property.</LegalP>
         <LegalP>Content uploaded by users remains the property of their respective authors. Riceshare does not claim ownership of uploaded rice or dotfiles.</LegalP>
       </LegalSec>
       <LegalSec n="07 — disclaimer" title="Limitation of liability">
@@ -1017,7 +1181,6 @@ function TermsPage({ onNav }) {
       </LegalSec>
       <LegalSec n="09 — contact" title="Contact">
         <LegalLi>Discord: <span style={{color:C.kw}}>discord.gg/riceshare</span></LegalLi>
-        <LegalLi>GitHub: <span style={{color:C.kw}}>github.com/riceshare/issues</span></LegalLi>
         <div style={{ marginTop:20, padding:"12px 16px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:2 }}>
           <div style={{color:C.gray3,fontStyle:"italic",marginBottom:6}}>// document</div>
           <div>version <span style={{color:C.white}}>1.0.0</span></div>
@@ -1104,7 +1267,6 @@ function PrivacyPage({ onNav }) {
       </LegalSec>
       <LegalSec n="11 — contact" title="Contact">
         <LegalLi>Discord: <span style={{color:C.kw}}>discord.gg/riceshare</span></LegalLi>
-        <LegalLi>GitHub: <span style={{color:C.kw}}>github.com/riceshare/issues</span></LegalLi>
         <LegalP>For urgent data security requests, specify "DATA PRIVACY" in the subject.</LegalP>
         <div style={{ marginTop:20, padding:"12px 16px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:2 }}>
           <div style={{color:C.gray3,fontStyle:"italic",marginBottom:6}}>// document</div>
@@ -1253,8 +1415,8 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
     const { supabase } = await import('../lib/supabase');
     const [pend, reps, hist, usrs, allRice] = await Promise.all([
       supabase.from('rice').select('*, users(username)').eq('status','pending').order('created_at',{ascending:false}),
-      supabase.from('reports').select('*, rice(*, users(username)), users!reports_reporter_id_fkey(username)').eq('status','open').order('created_at',{ascending:false}),
-      supabase.from('reports').select('*, rice(id,title), users!reports_reporter_id_fkey(username), resolver:users!reports_resolved_by_fkey(username)').neq('status','open').order('resolved_at',{ascending:false}).limit(100),
+      supabase.from('reports').select('*, rice(*, users(username))').eq('status','open').order('created_at',{ascending:false}),
+      supabase.from('reports').select('id,rice_id,reason,notes,action,status,resolved_at,resolved_by,reporter_id, rice(id,title)').neq('status','open').order('resolved_at',{ascending:false}).limit(100),
       supabase.from('users').select('*').order('created_at',{ascending:false}),
       supabase.from('rice').select('id,installs,status'),
     ]);
@@ -1283,7 +1445,7 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
       const rice = pending.find(r => r.id === riceId);
       if (rice?.author_id) {
         const [{ data: authorRices }, { data: userData }] = await Promise.all([
-          supabase.from('rice').select('*').eq('author_id', rice.author_id),
+          supabase.from('rice').select('*, users(username)').eq('author_id', rice.author_id),
           supabase.from('users').select('created_at').eq('id', rice.author_id).single(),
         ]);
         const updatedRices = (authorRices || []).map(r => r.id === riceId ? {...r, status:'approved'} : r);
@@ -1459,7 +1621,7 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
                       {r.notes && <span style={{ color:C.gray3 }}> — {r.notes}</span>}
                     </div>
                     <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>
-                      reported by <span style={{ color:C.gray2 }}>@{r.users?.username||"anonymous"}</span>
+                      reported by <span style={{ color:C.gray2 }}>@{r.users?.username||users.find(u=>u.id===r.reporter_id)?.username||"anon"}</span>
                       <span style={{ margin:"0 8px" }}>·</span>
                       {new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
                     </div>
@@ -1493,11 +1655,11 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
                       {r.notes && <span style={{ color:C.gray3 }}> — {r.notes}</span>}
                     </div>
                     <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>
-                      reported by <span style={{ color:C.gray2 }}>@{r.users?.username||"anon"}</span>
+                      reported by <span style={{ color:C.gray2 }}>@{users.find(u=>u.id===r.reporter_id)?.username||r.reporter_id?.slice(0,8)||"anon"}</span>
                       {r.resolved_at && <>
                         <span style={{ margin:"0 8px" }}>·</span>
                         resolved {new Date(r.resolved_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                        {r.resolver?.username && <> by <span style={{ color:C.gray2 }}>@{r.resolver.username}</span></>}
+                        {r.resolved_by && <> by <span style={{ color:C.gray2 }}>@{users.find(u=>u.id===r.resolved_by)?.username||"admin"}</span></>}
                       </>}
                     </div>
                   </div>
@@ -1570,13 +1732,20 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
 }
 
 /* ── HOMEPAGE ────────────────────────────────────────────────────── */
-function HomePage({ onSelect, onUpload }) {
-  const [rices, setRices]       = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [netError, setNetError] = useState(false);
-  const [search, setSearch]     = useState("");
-  const [wmFilter, setWmFilter] = useState("all");
-  const [view, setView]         = useState("grid");
+function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
+  const [rices, setRices]           = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [netError, setNetError]     = useState(false);
+  const [search, setSearch]         = useState("");
+  const [wmFilter, setWmFilter]     = useState("all");
+  useEffect(()=>{ if(tagClick){ setSearch(tagClick); if(onTagClickConsumed) onTagClickConsumed(); } },[tagClick]);
+  const [view, setView]             = useState("grid");
+  const [feedTab, setFeedTab]       = useState("explore");
+  const [sortBy, setSortBy]         = useState("newest");
+  const [forYouRices, setForYouRices] = useState([]);
+  const [forYouLoading, setForYouLoading] = useState(false);
+  const [forYouLoaded, setForYouLoaded]   = useState(false);
+  const { user } = useUser();
 
   useEffect(() => {
     import('../lib/supabase').then(({ supabase }) => {
@@ -1593,82 +1762,175 @@ function HomePage({ onSelect, onUpload }) {
     }).catch(() => { setNetError(true); setLoading(false); });
   }, []);
 
+  const loadForYou = async () => {
+    if (!user || forYouLoading) return;
+    setForYouLoading(true);
+    try {
+      const { supabase } = await import('../lib/supabase');
+
+      // Recupera IDs visti da localStorage
+      let viewedIds = [];
+      try { viewedIds = JSON.parse(localStorage.getItem('rs_views') || '[]'); } catch(e) {}
+
+      // 3-4 query in parallelo: storia completa dell'utente + tutti i rice approvati
+      const baseQueries = [
+        // like con dati completi del rice (non solo ID) — cattura preferenze anche se rice non in gallery
+        supabase.from('rice_likes').select('rice_id, rice(id, wm, distro, tags, author_id)').eq('user_id', user.id),
+        // follow
+        supabase.from('follows').select('following_id').eq('follower_id', user.id),
+        // tutti i rice approvati per lo scoring (non solo quelli caricati in gallery)
+        supabase.from('rice').select('*, users(username)').eq('status', 'approved').order('created_at', { ascending: false }).limit(300),
+      ];
+      // rice visti: query al DB solo se abbiamo IDs, per estrarne wm/distro/tags
+      if (viewedIds.length > 0) {
+        baseQueries.push(
+          supabase.from('rice').select('id, wm, distro, tags').in('id', viewedIds.slice(0, 20))
+        );
+      }
+
+      const [likesRes, followsRes, allRiceRes, viewedRiceRes] = await Promise.all(baseQueries);
+
+      // Estrai dati rice piaciuti (con dati completi grazie al join)
+      const likedRiceData = (likesRes.data || []).map(l => l.rice).filter(Boolean);
+      const followedIds   = new Set((followsRes.data || []).map(f => f.following_id));
+      const allRice       = (allRiceRes.data || []).map(normalizeRice);
+      const viewedRiceData = viewedIds.length > 0 ? (viewedRiceRes?.data || []) : [];
+
+      const likedIds = new Set(likedRiceData.map(r => r.id));
+
+      // Profilo preferenze costruito sull'intera storia (liked + viewed)
+      const prefWms     = new Set([...likedRiceData, ...viewedRiceData].map(r => r.wm).filter(Boolean));
+      const prefDistros = new Set([...likedRiceData, ...viewedRiceData].map(r => r.distro).filter(Boolean));
+
+      // Peso per tag: quanti rice piaciuti condividono quel tag (più peso = più rilevante)
+      const tagWeight = {};
+      likedRiceData.forEach(r => (r.tags || []).forEach(t => { tagWeight[t] = (tagWeight[t] || 0) + 1; }));
+      // Aggiungi anche i tag dai viewed (peso minore)
+      viewedRiceData.forEach(r => (r.tags || []).forEach(t => { tagWeight[t] = (tagWeight[t] || 0) + 0.3; }));
+
+      const recentViewed = new Set(viewedIds.slice(0, 5));
+
+      // Scoring su TUTTI i rice approvati (non solo quelli in gallery)
+      const scored = allRice
+        .filter(r => !likedIds.has(r.id) && !recentViewed.has(r.id))
+        .map(r => {
+          let score = 0;
+          if (followedIds.has(r.author_id)) score += 10;   // segui l'autore
+          if (prefWms.has(r.wm))            score += 4;    // stesso WM
+          if (prefDistros.has(r.distro))    score += 3;    // stessa distro
+          (r.tags || []).forEach(t => { score += (tagWeight[t] || 0); }); // tag in comune
+          return { ...r, _score: score };
+        });
+
+      const hasSignals = likedIds.size > 0 || followedIds.size > 0 || viewedIds.length > 0;
+      let result = hasSignals
+        ? scored.filter(r => r._score > 0).sort((a, b) => b._score - a._score)
+        : [];
+      // Se pochi risultati personalizzati, riempie con rice recenti non ancora visti
+      if (result.length < 10) {
+        const filler = scored.filter(r => r._score === 0);
+        result = [...result, ...filler].slice(0, 40);
+      }
+      setForYouRices(result.slice(0, 40));
+    } catch(e) { console.error('for you error:', e); }
+    setForYouLoaded(true);
+    setForYouLoading(false);
+  };
+
+  useEffect(() => {
+    if (feedTab === 'for-you' && !loading) loadForYou();
+  }, [feedTab, loading]);
+
   const wms = ["all","hyprland","sway","i3wm","bspwm","openbox"];
   const mobile = useMobile();
-  const filtered = rices.filter(r => {
-    const mf = wmFilter==="all" || r.wm===wmFilter;
-    const q  = search.toLowerCase();
-    const ms = !search
-      || (r.title||"").toLowerCase().includes(q)
-      || (r.author||"").toLowerCase().includes(q)
-      || (r.description||"").toLowerCase().includes(q)
-      || (r.tags||[]).some(t=>(t||"").toLowerCase().includes(q));
-    return mf && ms;
-  });
+  const filtered = (() => {
+    const base = rices.filter(r => {
+      const mf = wmFilter==="all" || r.wm===wmFilter;
+      const q  = search.toLowerCase();
+      const ms = !search
+        || (r.title||"").toLowerCase().includes(q)
+        || (r.author||"").toLowerCase().includes(q)
+        || (r.description||"").toLowerCase().includes(q)
+        || (r.tags||[]).some(t=>(t||"").toLowerCase().includes(q));
+      return mf && ms;
+    });
+    if (sortBy === "popular")  return [...base].sort((a,b) => (b.likes||0) - (a.likes||0));
+    if (sortBy === "trending") return [...base].sort((a,b) => (b.installs||0) - (a.installs||0));
+    return base; // newest — already ordered by created_at desc from DB
+  })();
 
   return (
     <div>
       <div style={{ borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ padding:"10px 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep }}>
-          <span style={{ fontSize:11, fontFamily:C.mono, color:C.comment, fontStyle:"italic" }}>
-            <span style={{ color:"#242424" }}>// </span>linux rice gallery &amp; one-click installer — v1.0.0
+        <div style={{ padding:"9px 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <span style={{ fontSize:10, fontFamily:C.mono, color:C.comment, fontStyle:"italic" }}>
+            <span style={{ color:"#333" }}>// </span>linux rice gallery &amp; one-click installer
           </span>
+          <span style={{ fontSize:10, fontFamily:C.mono, color:"#333" }}>v1.0.0</span>
         </div>
         {mobile ? (
           // Mobile hero — compact
-          <div style={{ padding:"16px 14px 14px", borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ fontFamily:C.display, fontSize:"clamp(24px,8vw,36px)", fontWeight:900, color:C.white, letterSpacing:"-0.03em", lineHeight:1, textTransform:"uppercase", marginBottom:8 }}>RICESHARE</div>
-            <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, marginBottom:12 }}>
-              <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>Find, Share, Customize.
+          <div style={{ padding:"20px 14px 16px", borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontFamily:C.display, fontSize:"clamp(28px,9vw,42px)", fontWeight:900, color:C.white, letterSpacing:"-0.04em", lineHeight:0.9, textTransform:"uppercase", marginBottom:10 }}>RICE<br/>SHARE</div>
+            <div style={{ width:32, height:2, background:C.fn, marginBottom:12 }}/>
+            <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.8, marginBottom:16 }}>
+              find, share &amp; install linux rice<br/>
+              <span style={{ color:C.gray3 }}>one command, one click.</span>
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none", flex:1 }}>
-                <button className="bs" style={{ width:"100%", padding:"8px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>community →</button>
+                <button className="bs" style={{ width:"100%", padding:"9px 0", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>discord →</button>
               </a>
-              <button className="bg" onClick={onUpload} style={{ flex:1, padding:"8px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>upload</button>
+              <button className="bg" onClick={onUpload} style={{ flex:1, padding:"9px 0", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>upload</button>
             </div>
           </div>
         ) : (
           // Desktop hero
-          <>
-            <div style={{ padding:"28px 32px 16px", borderBottom:`1px solid ${C.border}` }}>
-              <div style={{ fontFamily:C.display, fontSize:"clamp(28px,4vw,48px)", fontWeight:900, color:C.white, letterSpacing:"-0.03em", lineHeight:1, textTransform:"uppercase" }}>RICESHARE</div>
-            </div>
-            <div style={{ padding:"24px 32px 36px", display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:20 }}>
-              <div style={{ maxWidth:420 }}>
-                <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:2, marginBottom:20 }}>
-                  <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>Find, Share, Customize.<br/>Your Linux, one click away.
-                </p>
-                <div style={{ display:"flex", gap:10 }}>
-                  <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-                    <button className="bs" style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>community →</button>
-                  </a>
-                  <button className="bg" onClick={onUpload} style={{ padding:"9px 22px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>upload rice</button>
-                </div>
+          <div style={{ padding:"36px 32px 32px", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:24 }}>
+            {/* Left: title + tagline + buttons */}
+            <div style={{ maxWidth:480 }}>
+              <div style={{ fontFamily:C.display, fontSize:"clamp(36px,5vw,64px)", fontWeight:900, color:C.white, letterSpacing:"-0.04em", lineHeight:0.9, textTransform:"uppercase", marginBottom:14 }}>RICESHARE</div>
+              <div style={{ width:40, height:2, background:C.fn, marginBottom:18 }}/>
+              <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:2, marginBottom:24, maxWidth:360 }}>
+                find, share &amp; install linux rice — one command, one click.<br/>
+                <span style={{ color:C.gray3 }}>your desktop. your rules.</span>
+              </p>
+              <div style={{ display:"flex", gap:10 }}>
+                <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
+                  <button className="bs" style={{ padding:"10px 24px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>join discord →</button>
+                </a>
+                <button className="bg" onClick={onUpload} style={{ padding:"10px 24px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>upload rice</button>
               </div>
-              {!mobile && (
-                <div style={{ display:"flex", gap:28, fontFamily:C.mono }}>
-                  {[
-                    {v:loading?"...":String(rices.length),l:"rice"},
-                    {v:loading?"...":fmt(rices.reduce((a,r)=>a+(r.installs||0),0)),l:"installs"},
-                    {v:loading?"...":String(new Set(rices.map(r=>r.author).filter(Boolean)).size),l:"authors"},
-                  ].map(s=>(
-                    <div key={s.l} style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:22, fontWeight:600, color:C.white }}>{s.v}</div>
-                      <div style={{ fontSize:9, color:C.gray3 }}>{s.l}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          </>
+            {/* Right: stats */}
+            <div style={{ display:"flex", flexDirection:"column", gap:0, fontFamily:C.mono, borderLeft:`1px solid ${C.border}`, paddingLeft:32 }}>
+              {[
+                {v:loading?"—":String(rices.length),          l:"rice shared"},
+                {v:loading?"—":fmt(rices.reduce((a,r)=>a+(r.installs||0),0)), l:"total installs"},
+                {v:loading?"—":String(new Set(rices.map(r=>r.author).filter(Boolean)).size), l:"authors"},
+              ].map((s,i)=>(
+                <div key={s.l} style={{ padding:"10px 0", borderBottom:i<2?`1px solid ${C.border}`:"none" }}>
+                  <div style={{ fontSize:26, fontWeight:700, color:C.white, lineHeight:1 }}>{s.v}</div>
+                  <div style={{ fontSize:9, color:C.gray3, marginTop:3, letterSpacing:"0.08em", textTransform:"uppercase" }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
+      </div>
+
+      {/* ── FEED TABS ── */}
+      <div style={{ padding:mobile?"0 14px":"0 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep, display:"flex", alignItems:"center" }}>
+        {[["explore","// explore"],["for-you","// for you"]].map(([t,label])=>(
+          <button key={t} className="tb" onClick={()=>setFeedTab(t)} style={{ padding:mobile?"10px 14px":"10px 18px", background:"none", border:"none", borderBottom:feedTab===t?`2px solid ${C.fn}`:"2px solid transparent", color:feedTab===t?C.white:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>{label}</button>
+        ))}
+        {!user && feedTab==="for-you" && <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginLeft:"auto" }}>sign in to personalise</span>}
       </div>
 
       {/* ── SEARCH + VIEW TOGGLE ── */}
       {mobile ? (
         // Mobile: search + select dropdown
-        <div style={{ borderBottom:`1px solid ${C.border}`, background:C.bgDeep, padding:"10px 14px", display:"flex", flexDirection:"column", gap:8 }}>
+        feedTab === "explore" ? <div style={{ borderBottom:`1px solid ${C.border}`, background:C.bgDeep, padding:"10px 14px", display:"flex", flexDirection:"column", gap:8 }}>
           {/* Row 1: search + view toggle */}
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
             <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, border:`1px solid ${C.border}`, padding:"8px 12px" }}>
@@ -1705,12 +1967,21 @@ function HomePage({ onSelect, onUpload }) {
               {/* Custom chevron */}
               <span style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", color:C.gray3, fontSize:10, pointerEvents:"none" }}>▾</span>
             </div>
+            <select
+              value={sortBy}
+              onChange={e=>setSortBy(e.target.value)}
+              style={{ appearance:"none", WebkitAppearance:"none", background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray2, padding:"7px 24px 7px 10px", fontSize:11, fontFamily:C.mono, cursor:"pointer", outline:"none", position:"relative" }}
+            >
+              <option value="newest" style={{ background:C.bgDeep }}>newest</option>
+              <option value="popular" style={{ background:C.bgDeep }}>popular</option>
+              <option value="trending" style={{ background:C.bgDeep }}>trending</option>
+            </select>
             <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, flexShrink:0, whiteSpace:"nowrap" }}>{filtered.length} results</span>
           </div>
-        </div>
+        </div> : <div style={{ borderBottom:`1px solid ${C.border}` }}/>
       ) : (
         // Desktop: search bar + view toggle
-        <>
+        feedTab === "explore" ? <>
           <div style={{ padding:"10px 32px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:8, alignItems:"center", background:C.bgDeep }}>
             <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, border:`1px solid ${C.border}`, padding:"7px 12px" }}>
               <span style={{ color:C.gray3, fontSize:11 }}>{">"}</span>
@@ -1731,45 +2002,75 @@ function HomePage({ onSelect, onUpload }) {
               </button>
             ))}
             <div style={{ flex:1 }}/>
+            {/* Sort selector */}
+            <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}`, overflow:"hidden", marginRight:12 }}>
+              {[["newest","newest"],["popular","popular"],["trending","trending"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setSortBy(v)} style={{ padding:"6px 12px", border:"none", background:sortBy===v?C.white:"transparent", color:sortBy===v?"#111":C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .15s", borderRight:`1px solid ${C.border}` }}>{l}</button>
+              ))}
+            </div>
             <span style={{ fontSize:9, color:C.gray3 }}>{filtered.length} results</span>
           </div>
-        </>
+        </> : <div style={{ borderBottom:`1px solid ${C.border}` }}/>
       )}
 
       <div style={{ padding:mobile?"12px 14px 32px":"24px 32px 48px" }}>
-        {loading ? (
-          <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
-            // loading...
-          </div>
-        ) : netError ? (
-          <div style={{ paddingTop:60, display:"flex", flexDirection:"column", gap:12 }}>
-            <div style={{ fontFamily:C.mono, fontSize:11, color:C.gray3, fontStyle:"italic" }}>// cms not connected</div>
-            <div style={{ fontFamily:C.mono, fontSize:12, color:"#a05858" }}>unable to reach the database — check your connection or Supabase configuration.</div>
-            <button onClick={()=>{ setNetError(false); setLoading(true); import('../lib/supabase').then(({supabase})=>{ supabase.from('rice').select('*, users(username)').eq('status','approved').order('created_at',{ascending:false}).then(({data,error})=>{ if(error) setNetError(true); else if(data) setRices(data.map(normalizeRice)); setLoading(false); }); }).catch(()=>{setNetError(true);setLoading(false);}); }}
-              className="bg" style={{ alignSelf:"flex-start", padding:"7px 18px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
-              retry
-            </button>
-          </div>
+        {feedTab === "for-you" ? (
+          /* ── FOR YOU FEED ── */
+          !user ? (
+            <div style={{ paddingTop:80, fontFamily:C.mono, display:"flex", flexDirection:"column", gap:10 }}>
+              <div style={{ fontSize:12, color:C.gray3, fontStyle:"italic" }}>// not signed in</div>
+              <div style={{ fontSize:11, color:C.gray2, lineHeight:1.8 }}>Sign in to get a personalised feed based on<br/>who you follow and what you like.</div>
+            </div>
+          ) : forYouLoading || loading ? (
+            <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>// loading feed...</div>
+          ) : forYouRices.length === 0 ? (
+            <div style={{ paddingTop:60, display:"flex", flexDirection:"column", gap:12, fontFamily:C.mono }}>
+              <div style={{ fontSize:12, color:C.gray3, fontStyle:"italic" }}>// nothing here yet</div>
+              <div style={{ fontSize:11, color:C.gray2, lineHeight:1.8 }}>
+                Like some rice, follow authors, or browse the gallery —<br/>your feed will fill up automatically.
+              </div>
+            </div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"repeat(auto-fill,minmax(340px,1fr))", gap:mobile?12:20 }}>
+              {forYouRices.map((r,i)=><RiceCard key={r.id} rice={r} onClick={onSelect} delay={i*.04}/>)}
+            </div>
+          )
         ) : (
-          <>
-            {view==="grid" ? (
-              <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"repeat(auto-fill,minmax(340px,1fr))", gap:mobile?12:20 }}>
-                {filtered.map((r,i)=><RiceCard key={r.id} rice={r} onClick={onSelect} delay={i*.04}/>)}
-              </div>
-            ) : (
-              <TableView rices={filtered} onClick={onSelect}/>
-            )}
-            {!loading && rices.length > 0 && filtered.length === 0 && (
-              <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
-                // no results for "{search||wmFilter}"
-              </div>
-            )}
-            {!loading && rices.length === 0 && (
-              <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
-                // no rice yet — <span style={{color:C.fn,cursor:"pointer"}} onClick={onUpload}>upload the first one</span>
-              </div>
-            )}
-          </>
+          /* ── EXPLORE FEED ── */
+          loading ? (
+            <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
+              // loading...
+            </div>
+          ) : netError ? (
+            <div style={{ paddingTop:60, display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ fontFamily:C.mono, fontSize:11, color:C.gray3, fontStyle:"italic" }}>// cms not connected</div>
+              <div style={{ fontFamily:C.mono, fontSize:12, color:"#a05858" }}>unable to reach the database — check your connection or Supabase configuration.</div>
+              <button onClick={()=>{ setNetError(false); setLoading(true); import('../lib/supabase').then(({supabase})=>{ supabase.from('rice').select('*, users(username)').eq('status','approved').order('created_at',{ascending:false}).then(({data,error})=>{ if(error) setNetError(true); else if(data) setRices(data.map(normalizeRice)); setLoading(false); }); }).catch(()=>{setNetError(true);setLoading(false);}); }}
+                className="bg" style={{ alignSelf:"flex-start", padding:"7px 18px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>
+                retry
+              </button>
+            </div>
+          ) : (
+            <>
+              {view==="grid" ? (
+                <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"repeat(auto-fill,minmax(340px,1fr))", gap:mobile?12:20 }}>
+                  {filtered.map((r,i)=><RiceCard key={r.id} rice={r} onClick={onSelect} delay={i*.04}/>)}
+                </div>
+              ) : (
+                <TableView rices={filtered} onClick={onSelect}/>
+              )}
+              {!loading && rices.length > 0 && filtered.length === 0 && (
+                <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
+                  // no results for "{search||wmFilter}"
+                </div>
+              )}
+              {!loading && rices.length === 0 && (
+                <div style={{ paddingTop:60, fontFamily:C.mono, fontSize:12, color:C.gray3, fontStyle:"italic" }}>
+                  // no rice yet — <span style={{color:C.fn,cursor:"pointer"}} onClick={onUpload}>upload the first one</span>
+                </div>
+              )}
+            </>
+          )
         )}
       </div>
     </div>
@@ -1802,7 +2103,7 @@ function useMobile(breakpoint=640) {
   return mobile;
 }
 
-function Navbar({ page, setPage, isAdmin }) {
+function Navbar({ page, setPage, isAdmin, navUnread }) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1828,7 +2129,7 @@ function Navbar({ page, setPage, isAdmin }) {
             {!isMobile && (user ? (
               <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:16 }}>
                 {isAdmin && <button onClick={()=>setPage("admin")} style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:9, fontFamily:C.mono, padding:"2px 8px" }}>admin</button>}
-                <button onClick={()=>setPage("profiles")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:10, fontFamily:C.mono, color:C.fn, padding:0 }}>@{user?.username || user?.firstName || "user"}</button>
+                <button onClick={()=>setPage("profiles")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:10, fontFamily:C.mono, color:C.fn, padding:0, display:"inline-flex", alignItems:"center", gap:4 }}>@{user?.username || user?.firstName || "user"}{navUnread>0&&<span style={{ width:6, height:6, borderRadius:"50%", background:"#f47244", display:"inline-block", marginBottom:1 }}/>}</button>
                 <button onClick={()=>signOut(()=>setPage("home"))} className="bg" style={{ padding:"4px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>logout</button>
               </div>
             ) : (
@@ -1849,7 +2150,7 @@ function Navbar({ page, setPage, isAdmin }) {
           {user ? (
             <div style={{ display:"flex", gap:10, padding:"8px 20px", flexWrap:"wrap" }}>
               {isAdmin && <button onClick={()=>{setPage("admin");setMenuOpen(false);}} style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:11, fontFamily:C.mono, padding:"4px 10px" }}>admin</button>}
-              <button onClick={()=>{setPage("profiles");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn }}>@{user?.username || user?.firstName || "user"}</button>
+              <button onClick={()=>{setPage("profiles");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn, display:"inline-flex", alignItems:"center", gap:5 }}>@{user?.username || user?.firstName || "user"}{navUnread>0&&<span style={{ width:7, height:7, borderRadius:"50%", background:"#f47244", display:"inline-block" }}/>}</button>
               <button onClick={()=>signOut(()=>setPage("home"))} style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono }}>logout</button>
             </div>
           ) : (
@@ -2006,12 +2307,10 @@ function DocsPage() {
           </Block>
         </Sec>
         <Sec id="community" n={5} title="Community & contributions">
-          <P>Riceshare is open source. The code is on GitHub — contributions, bug reports and suggestions are welcome.</P>
+          <P>Riceshare is community driven — contributions, bug reports and suggestions are welcome on Discord.</P>
           <Block>
             <div style={{color:C.gray3,fontStyle:"italic",marginBottom:8}}>// useful links</div>
-            <KV k="github"   v="github.com/riceshare"/>
             <KV k="discord"  v="discord.gg/riceshare"/>
-            <KV k="issues"   v="github.com/riceshare/issues"/>
           </Block>
           <Block>
             <div style={{color:C.gray3,fontStyle:"italic",marginBottom:8}}>// special badges</div>
@@ -2301,9 +2600,6 @@ function AuthPage({ onBack, onLogin }) {
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
               <div style={{flex:1,height:1,background:C.border}}/><span style={{fontSize:10,color:C.gray3,fontFamily:C.mono}}>or</span><div style={{flex:1,height:1,background:C.border}}/>
             </div>
-            <button className="bg" style={{width:"100%",padding:"11px",border:`1px solid ${C.border}`,background:"transparent",color:C.gray2,cursor:"pointer",fontSize:12,fontFamily:C.mono,transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:8}}>
-              <span style={{fontSize:14}}>⌥</span>continue with GitHub
-            </button>
             <button className="bg" style={{width:"100%",padding:"11px",border:`1px solid ${C.border}`,background:"transparent",color:C.gray2,cursor:"pointer",fontSize:12,fontFamily:C.mono,transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
               <span style={{fontSize:13}}>G</span>continue with Google
             </button>
@@ -2317,10 +2613,14 @@ function AuthPage({ onBack, onLogin }) {
 /* ── PUBLIC PROFILE PAGE ─────────────────────────────────────────── */
 function PublicProfilesPage({ author, onBack, onSelectRice }) {
   const mobile = useMobile();
+  const { user } = useUser();
   const [profiles, setProfiles] = useState(null);
   const [pubAchievements, setPubAchievements] = useState([]);
-  const [rices, setRices]     = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [rices, setRices]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followers, setFollowers] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
     import('../lib/supabase').then(({ supabase }) => {
@@ -2334,9 +2634,40 @@ function PublicProfilesPage({ author, onBack, onSelectRice }) {
             .then(({ data }) => setPubAchievements((data||[]).map(b=>b.badge)));
           supabase.from('rice').select('*, users(username)').eq('author_id', u.id).eq('status','approved')
             .then(({ data: r }) => { setRices((r||[]).map(normalizeRice)); setLoading(false); });
+          // Fetch follower count + check if current user follows
+          supabase.from('follows').select('follower_id', { count:'exact', head:true }).eq('following_id', u.id)
+            .then(({ count }) => setFollowers(count || 0));
+          if (user) {
+            supabase.from('follows').select('follower_id').eq('follower_id', user.id).eq('following_id', u.id).maybeSingle()
+              .then(({ data }) => setIsFollowing(!!data));
+          }
         });
     }).catch(()=>setLoading(false));
-  }, [author]);
+  }, [author, user]);
+
+  const toggleFollow = async () => {
+    if (!user || !profiles?.id || followLoading) return;
+    setFollowLoading(true);
+    const { supabase } = await import('../lib/supabase');
+    if (isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', profiles.id);
+      setIsFollowing(false);
+      setFollowers(f => Math.max(0, f - 1));
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: profiles.id });
+      setIsFollowing(true);
+      setFollowers(f => f + 1);
+      // Notifica al seguito
+      if (profiles.clerk_id && profiles.clerk_id !== user.id) {
+        supabase.from('notifications').insert({
+          user_id: profiles.clerk_id,
+          type:    'follow',
+          message: `@${user.username || user.firstName} started following you`,
+        }).then(()=>{}).catch(()=>{});
+      }
+    }
+    setFollowLoading(false);
+  };
 
   const isFounder  = profiles?.badge === 'founder';
   const badgeColor = { founder:C.gold, staff:C.string, senior:C.fn, trusted:C.kw, member:C.gray2 }[profiles?.badge] || C.gray2;
@@ -2356,11 +2687,16 @@ function PublicProfilesPage({ author, onBack, onSelectRice }) {
         <div style={{ border:`1px solid ${isFounder?C.gold+"44":C.border}`, background:C.bgCard, padding:"24px 28px", marginBottom:24 }}>
           <div style={{ display:"flex", flexDirection:mobile?"column":"row", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:mobile?12:20 }}>
             <div>
-              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10, flexWrap:"wrap" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:6, flexWrap:"wrap" }}>
                 <span style={{ fontFamily:C.display, fontSize:"clamp(22px,3vw,32px)", fontWeight:800, color:C.white, letterSpacing:"-0.025em" }}>@{author}</span>
                 {profiles?.badge && !isFounder && <span style={{ fontSize:9, border:`1px solid ${badgeColor}55`, color:badgeColor, padding:"2px 9px", fontFamily:C.mono }}>{profiles.badge}</span>}
                 {isFounder && <FounderBadge/>}
               </div>
+              {pubAchievements.length>0 && (
+                <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:10 }}>
+                  {ACHIEVEMENT_BADGES.filter(b=>pubAchievements.includes(b.id)).map(b=><BadgeChip key={b.id} badge={b}/>)}
+                </div>
+              )}
               {(profiles?.created_at || profiles?.joined) && (
                 <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, marginBottom:8, fontStyle:"italic" }}>
                   // member since {new Date(profiles.created_at || profiles.joined).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
@@ -2374,13 +2710,27 @@ function PublicProfilesPage({ author, onBack, onSelectRice }) {
                 </div>
               )}
             </div>
-            <div style={{ display:"flex", gap:24 }}>
-              {[{v:rices.length,l:"rice"},{v:fmt(rices.reduce((a,r)=>a+(r.installs||0),0)),l:"installs"},{v:fmt(rices.reduce((a,r)=>a+(r.likes||0),0)),l:"likes"}].map(s=>(
-                <div key={s.l} style={{ textAlign:"right" }}>
-                  <div style={{ fontSize:20, fontWeight:600, color:C.white, fontFamily:C.mono }}>{s.v}</div>
-                  <div style={{ fontSize:9, color:C.gray3 }}>{s.l}</div>
-                </div>
-              ))}
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:16 }}>
+              <div style={{ display:"flex", gap:24 }}>
+                {[{v:rices.length,l:"rice"},{v:fmt(rices.reduce((a,r)=>a+(r.installs||0),0)),l:"installs"},{v:fmt(rices.reduce((a,r)=>a+(r.likes||0),0)),l:"likes"},{v:followers,l:"followers"}].map(s=>(
+                  <div key={s.l} style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:20, fontWeight:600, color:C.white, fontFamily:C.mono }}>{s.v}</div>
+                    <div style={{ fontSize:9, color:C.gray3 }}>{s.l}</div>
+                  </div>
+                ))}
+              </div>
+              {user && user.username !== author && (
+                <button onClick={toggleFollow} disabled={followLoading} style={{
+                  padding:"6px 18px", border:`1px solid ${isFollowing ? C.border : C.fn}`,
+                  background: isFollowing ? "transparent" : C.fn+"14",
+                  color: isFollowing ? C.gray2 : C.fn,
+                  cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s"
+                }}
+                  onMouseEnter={e=>{ if(!isFollowing) e.currentTarget.style.background=C.fn+"28"; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background=isFollowing?"transparent":C.fn+"14"; }}
+                >{followLoading ? "..." : isFollowing ? "following ✓" : "+ follow"}</button>
+              )}
+
             </div>
           </div>
         </div>
@@ -2506,12 +2856,129 @@ function DeleteAccountButton({ user, signOut }) {
   );
 }
 
+function NotificationsTab({ userId, onRead }) {
+  const [notifs, setNotifs] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.from('notifications').select('*').eq('user_id', userId)
+        .order('created_at', { ascending: false }).limit(50)
+        .then(({ data }) => {
+          setNotifs(data || []);
+          setLoaded(true);
+          // Segna tutte come lette
+          supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false).then(()=>{});
+          if (onRead) onRead();
+        });
+    });
+  }, [userId]);
+
+  const typeIcon = { like:'♥', comment:'💬', issue:'⚠️', follow:'👤', rice_deleted:'🗑' };
+  const typeColor = { like:'#f43f5e', comment:C.fn, issue:'#ef4444', follow:'#818cf8', rice_deleted:C.string };
+
+  if (!loaded) return <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, padding:"20px 0" }}>loading...</div>;
+  if (!notifs.length) return (
+    <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, padding:"20px 0", fontStyle:"italic" }}>
+      // no notifications yet
+    </div>
+  );
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+      <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:4 }}>// notifications</div>
+      {notifs.map(n => (
+        <div key={n.id} style={{
+          border:`1px solid ${n.read ? C.border : C.borderHi}`,
+          background: n.read ? C.bgDeep : C.bgDeep,
+          padding:"12px 14px",
+          opacity: n.read ? 0.65 : 1,
+          transition:"opacity .2s"
+        }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:n.message?6:0 }}>
+            <span style={{ fontSize:13 }}>{typeIcon[n.type] || '🔔'}</span>
+            {n.rice_name && <span style={{ fontSize:9, color:typeColor[n.type]||C.gray3, fontFamily:C.mono, border:`1px solid ${(typeColor[n.type]||C.gray3)}44`, padding:"1px 7px" }}>// {n.rice_name}</span>}
+            <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginLeft:"auto" }}>
+              {new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+            </span>
+          </div>
+          {n.message && <div style={{ fontSize:11, color:C.white, fontFamily:C.mono, lineHeight:1.6 }}>{n.message}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SimilarRice({ rice, onSelect }) {
+  const [similar, setSimilar] = useState([]);
+
+  useEffect(() => {
+    if (!rice.id || !rice.wm) return;
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.from('rice')
+        .select('id, title, author_id, images, wm, distro, tags, likes, users(username)')
+        .eq('status', 'approved')
+        .eq('wm', rice.wm)
+        .neq('id', rice.id)
+        .order('likes', { ascending: false })
+        .limit(8)
+        .then(({ data }) => {
+          if (!data || data.length === 0) return;
+          const myTags = rice.tags || [];
+          const scored = data.map(r => ({
+            ...normalizeRice(r),
+            _score: (r.tags || []).filter(t => myTags.includes(t)).length
+          }));
+          scored.sort((a, b) => b._score - a._score);
+          setSimilar(scored.slice(0, 4));
+        });
+    });
+  }, [rice.id]);
+
+  if (!similar.length) return null;
+
+  return (
+    <div style={{ marginTop:24 }}>
+      <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", fontFamily:C.mono, marginBottom:10 }}>// SIMILAR</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8 }}>
+        {similar.map(r => (
+          <div key={r.id} onClick={()=>onSelect(r)}
+            style={{ cursor:"pointer", border:`1px solid ${C.border}`, padding:"10px 12px", background:C.bgDeep, transition:"border-color .15s" }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHi}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+            <div style={{ fontSize:11, color:C.white, fontFamily:C.mono, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.title}</div>
+            <div style={{ fontSize:9, color:C.gray3, fontFamily:C.mono }}>@{r.author} · ♥ {r.likes||0}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab({ user, signOut }) {
   const mobile = useMobile();
   const [pwdForm, setPwdForm]   = useState({ current:"", next:"", confirm:"" });
   const [showPwd, setShowPwd]   = useState(false);
   const [pwdState, setPwdState] = useState(null); // null | "loading" | "ok" | "error"
   const [pwdError, setPwdError] = useState("");
+  const [bio, setBio]           = useState("");
+  const [bioSaved, setBioSaved] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.from('users').select('bio').eq('clerk_id', user.id).maybeSingle()
+        .then(({ data }) => { if (data?.bio) setBio(data.bio); });
+    });
+  }, [user?.id]);
+
+  const saveBio = async () => {
+    const { supabase } = await import('../lib/supabase');
+    await supabase.from('users').update({ bio: bio.trim() }).eq('clerk_id', user.id);
+    setBioSaved(true);
+    setTimeout(() => setBioSaved(false), 2500);
+  };
 
   const setPwd = (k,v) => setPwdForm(f=>({...f,[k]:v}));
 
@@ -2587,6 +3054,22 @@ function SettingsTab({ user, signOut }) {
           onMouseLeave={e=>e.currentTarget.style.opacity="1"}
         >discord</a>
         {" "}for support.
+      </div>
+
+      {/* Bio */}
+      <div style={{ height:1, background:C.border, margin:"24px 0 20px" }}/>
+      <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:10 }}>// bio</div>
+      <textarea
+        value={bio}
+        onChange={e=>setBio(e.target.value)}
+        maxLength={300}
+        placeholder="tell people about yourself..."
+        rows={3}
+        style={{ width:"100%", background:C.bgDeep, border:`1px solid ${C.border}`, color:C.white, padding:"9px 12px", fontSize:12, fontFamily:C.mono, outline:"none", resize:"vertical", boxSizing:"border-box" }}
+      />
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:6, marginBottom:4 }}>
+        <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono }}>{bio.length}/300</span>
+        <button onClick={saveBio} className="bg" style={{ padding:"5px 14px", border:`1px solid ${bioSaved?C.kw:C.border}`, background:"transparent", color:bioSaved?C.kw:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .2s" }}>{bioSaved?"saved ✓":"save bio"}</button>
       </div>
 
       {/* Sezione cambio password */}
@@ -2703,78 +3186,139 @@ function SettingsTab({ user, signOut }) {
 }
 
 /* ── PROFILE PAGE ────────────────────────────────────────────────── */
-function ProfilesPage({ onNav, onSelectRice }) {
+
+function IssuesTab({ rices, mobile }) {
+  const [issues, setIssues] = useState(null);
+  useEffect(() => {
+    import('../lib/supabase').then(async ({ supabase }) => {
+      const riceIds = rices.map(r => r.id);
+      if (!riceIds.length) { setIssues([]); return; }
+      const { data } = await supabase
+        .from('comments')
+        .select('*')
+        .in('rice_id', riceIds)
+        .eq('type', 'issue')
+        .order('created_at', { ascending: false });
+      setIssues(data || []);
+    });
+  }, [rices]);
+
+  const deleteIssue = async (id) => {
+    import('../lib/supabase').then(async ({ supabase }) => {
+      await supabase.from('comments').delete().eq('id', id);
+      setIssues(prev => prev.filter(i => i.id !== id));
+    });
+  };
+
+  if (!issues) return <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// loading...</div>;
+  if (!issues.length) return <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no issues reported on your rice</div>;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      {issues.map(issue => {
+        const riceTitle = rices.find(r => r.id === issue.rice_id)?.title || "rice";
+        return (
+          <div key={issue.id} style={{ border:"1px solid #ef444466", borderLeft:"3px solid #ef4444", background:"#ef444408", padding:"14px 16px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8, gap:8 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ fontSize:9, color:"#fff", background:"#ef4444", padding:"2px 7px", fontFamily:C.mono, fontWeight:600, letterSpacing:"0.05em" }}>⚠ issue</span>
+                  <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono }}>// {riceTitle}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize:11, fontFamily:C.mono, color:C.fn }}>@{issue.username}</span>
+                  <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginLeft:8 }}>
+                    {new Date(issue.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => deleteIssue(issue.id)} className="bs" style={{
+                padding:"4px 10px", border:`1px solid ${C.string}55`,
+                background:"transparent", color:C.string, cursor:"pointer",
+                fontSize:9, fontFamily:C.mono, flexShrink:0, transition:"all .15s"
+              }}>resolved ✓</button>
+            </div>
+            <p style={{ fontSize:12, color:C.gray1, fontFamily:C.mono, margin:0, lineHeight:1.8, whiteSpace:"pre-wrap" }}>{issue.content}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfilesPage({ onNav, onSelectRice, onClearNotifs }) {
   const mobile = useMobile();
-  const { user } = useUser();
+  const { user, isLoaded: clerkLoaded } = useUser();
   const { signOut } = useClerk();
   const [rices, setRices]         = useState([]);
+  const [likedRices, setLikedRices] = useState([]);
   const [tab, setTab]             = useState("rice");
   const [isFounder, setIsFounder] = useState(false);
   const [badge, setBadge]         = useState("member");
   const [achievements, setAchievements] = useState([]);
+  const [ownFollowing, setOwnFollowing] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   useEffect(() => {
     if (!user) return;
+    setLoading(true);
     import('../lib/supabase').then(async ({ supabase }) => {
-      const [{ data: userData }, { data: riceData }] = await Promise.all([
+      const [{ data: userData }, { data: riceData }, { data: likesData }, { count: followingCount }, { count: notifUnread }] = await Promise.all([
         supabase.from('users').select('badge,trust_level,created_at').eq('id', user.id).single(),
-        supabase.from('rice').select('*').eq('author_id', user.id),
+        supabase.from('rice').select('*, users(username)').eq('author_id', user.id),
+        supabase.from('rice_likes').select('rice_id').eq('user_id', user.id),
+        supabase.from('follows').select('following_id', { count:'exact', head:true }).eq('follower_id', user.id),
+        supabase.from('notifications').select('id', { count:'exact', head:true }).eq('user_id', user.id).eq('read', false),
       ]);
-      if (userData) { setBadge(userData.badge||'member'); setIsFounder(userData.badge==='founder'); }
       const myRices = riceData || [];
-      setRices(myRices);
+      const newBadge = userData?.badge || 'member';
       const earned = await computeBadges(user.id, myRices, userData?.created_at, supabase);
+      let likedRiceData = [];
+      if (likesData && likesData.length > 0) {
+        const likedIds = likesData.map(l => l.rice_id);
+        const { data: lr } = await supabase
+          .from('rice')
+          .select('*, users(username)')
+          .in('id', likedIds)
+          .eq('status', 'approved');
+        likedRiceData = lr || [];
+      }
+      // Single batch update - one render only
+      setBadge(newBadge);
+      setIsFounder(newBadge === 'founder');
+      setOwnFollowing(followingCount || 0);
+      setRices(myRices);
       setAchievements(earned);
+      setLikedRices(likedRiceData);
+      setUnreadNotifCount(notifUnread || 0);
+      setLoading(false);
     });
-  }, [user]);
+  }, [user?.id]);
 
-  if (!user) return null;
+  if (!user || !clerkLoaded) return null;
+  if (loading) return (
+    <div style={{ padding: mobile?"60px 16px":"80px 40px", textAlign:"center", fontSize:11, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>
+      // loading profile...
+    </div>
+  );
 
   const badgeColor = { founder:C.gold, staff:C.string, senior:C.fn, trusted:C.kw, member:C.gray2 }[badge] || C.gray2;
-
   const earnedBadges = ACHIEVEMENT_BADGES.filter(b => achievements.includes(b.id));
 
   const stats = [
     {v:rices.length, l:"rice"},
     {v:rices.reduce((a,r)=>a+(r.installs||0),0), l:"installs"},
     {v:rices.reduce((a,r)=>a+(r.likes||0),0), l:"likes"},
+    {v:ownFollowing, l:"following"},
   ];
 
-  const RiceGrid = () => (
-    <div style={{ animation:"fadeIn .2s ease" }}>
-      {rices.length===0 ? (
-        <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", padding:"20px 0" }}>// no rice published yet</div>
-      ) : (
-        <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr 1fr":"repeat(auto-fill,minmax(240px,1fr))", gap:mobile?8:12 }}>
-          {rices.map((r,i)=>(
-            <div key={r.id} className="card" style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:mobile?"10px":"14px", animation:`fadeUp .3s ease ${i*.06}s both`, cursor:r.status==="approved"?"pointer":"default" }}
-              onClick={()=>{ if(r.status==="approved") onSelectRice(normalizeRice(r)); }}
-            >
-              {r.cover_url && <div style={{ marginBottom:8, marginLeft:mobile?-10:-14, marginRight:mobile?-10:-14, marginTop:mobile?-10:-14 }}><img src={r.cover_url} alt={r.title} style={{ width:"100%", height:80, objectFit:"cover", display:"block" }}/></div>}
-              <div className="ct" style={{ fontSize:mobile?11:12, color:C.white, marginBottom:3, transition:"color .15s", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.title}</div>
-              <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <div style={{ fontSize:9, color:r.status==="approved"?C.fn:C.string, fontStyle:"italic" }}>// {r.status}</div>
-                {!mobile && <DeleteRiceButton riceId={r.id} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      <div onClick={()=>onNav("upload")} style={{ border:`1px dashed ${C.border}`, marginTop:12, cursor:"pointer", padding:mobile?"16px":"24px", textAlign:"center", fontSize:11, fontFamily:C.mono, color:C.gray3 }}
-        onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHi}
-        onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
-      >+ upload new rice</div>
-    </div>
-  );
 
-  const Tabs = () => (
-    <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:mobile?16:24 }}>
-      {[["rice","rice"],["settings","settings"]].map(([t,label])=>(
-        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"8px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:mobile?10:11, fontFamily:C.mono, marginBottom:-1 }}>{label}</button>
-      ))}
-    </div>
-  );
+
+
+
+
+
 
   /* ── MOBILE LAYOUT ─────────────────────────────────────────── */
   if (mobile) return (
@@ -2789,7 +3333,7 @@ function ProfilesPage({ onNav, onSelectRice }) {
           <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
             {!isFounder && <span style={{ fontSize:9, border:`1px solid ${badgeColor}55`, color:badgeColor, padding:"1px 7px", fontFamily:C.mono }}>{badge}</span>}
             {isFounder && <FounderBadge/>}
-            {earnedBadges.map(b=><span key={b.id} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"1px 7px", fontFamily:C.mono }}>{b.label}</span>)}
+            {earnedBadges.map(b=><BadgeChip key={b.id} badge={b}/>)}
           </div>
         </div>
         {/* Stats row */}
@@ -2805,10 +3349,68 @@ function ProfilesPage({ onNav, onSelectRice }) {
           // member since {new Date(user.createdAt).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
         </div>
       </div>
-      {/* Tabs + content */}
       <div style={{ padding:"14px 14px 32px" }}>
-        <Tabs/>
-        {tab==="rice" && <RiceGrid/>}
+    <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:mobile?16:24 }}>
+      {[["rice","rice"],["liked","liked"],["issues","issues"],["notifs","notifs"],["settings","settings"]].map(([t,label])=>(
+        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"8px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:mobile?10:11, fontFamily:C.mono, marginBottom:-1, display:"flex", alignItems:"center", gap:4 }}>
+          {label}
+          {t==="notifs"&&unreadNotifCount>0&&<span style={{ background:"#f47244", color:"#fff", fontSize:7, padding:"1px 4px", lineHeight:1.4, borderRadius:2 }}>{unreadNotifCount}</span>}
+        </button>
+      ))}
+    </div>
+        {tab==="rice" && (
+        <div>
+          {rices.length===0 ? (
+            <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", padding:"20px 0" }}>// no rice published yet</div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr 1fr":"repeat(auto-fill,minmax(240px,1fr))", gap:mobile?8:12 }}>
+              {rices.map((r,i)=>(
+                <div key={r.id} className="card" style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:mobile?"10px":"14px", animation:`fadeUp .3s ease ${i*.06}s both`, cursor:r.status==="approved"?"pointer":"default" }}
+                  onClick={()=>{ if(r.status==="approved") onSelectRice(normalizeRice(r)); }}
+                >
+                  {r.cover_url && <div style={{ marginBottom:8, marginLeft:mobile?-10:-14, marginRight:mobile?-10:-14, marginTop:mobile?-10:-14 }}><img src={r.cover_url} alt={r.title} style={{ width:"100%", height:80, objectFit:"cover", display:"block" }}/></div>}
+                  <div className="ct" style={{ fontSize:mobile?11:12, color:C.white, marginBottom:3, transition:"color .15s", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.title}</div>
+                  <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ fontSize:9, color:r.status==="approved"?C.fn:C.string, fontStyle:"italic" }}>// {r.status}</div>
+                    {!mobile && <DeleteRiceButton riceId={r.id} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div onClick={()=>onNav("upload")} style={{ border:`1px dashed ${C.border}`, marginTop:12, cursor:"pointer", padding:mobile?"16px":"24px", textAlign:"center", fontSize:11, fontFamily:C.mono, color:C.gray3 }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHi}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
+          >+ upload new rice</div>
+        </div>
+      )}
+        {tab==="liked" && (
+        <div>
+          {likedRices.length===0 ? (
+            <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", padding:"20px 0" }}>// no liked rice yet</div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr 1fr":"repeat(auto-fill,minmax(240px,1fr))", gap:mobile?8:12 }}>
+              {likedRices.map((r,i)=>(
+                <div key={r.id} className="card" style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:mobile?"10px":"14px", animation:`fadeUp .3s ease ${i*.06}s both`, cursor:"pointer" }}
+                  onClick={()=>onSelectRice(normalizeRice(r))}
+                >
+                  {r.cover_url && <div style={{ marginBottom:8, marginLeft:mobile?-10:-14, marginRight:mobile?-10:-14, marginTop:mobile?-10:-14 }}><img src={r.cover_url} alt={r.title} style={{ width:"100%", height:80, objectFit:"cover", display:"block" }}/></div>}
+                  <div className="ct" style={{ fontSize:mobile?11:12, color:C.white, marginBottom:3, transition:"color .15s", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.title}</div>
+                  <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ fontSize:9, color:C.string }}>♥</span>
+                    <span style={{ fontSize:9, color:C.gray3 }}>{r.likes||0} likes</span>
+                    <span style={{ fontSize:9, color:C.gray3, marginLeft:"auto" }}>by @{r.author}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+        {tab==="issues" && <IssuesTab rices={rices} mobile={mobile}/>}
+        {tab==="notifs" && <NotificationsTab userId={user?.id} onRead={()=>{setUnreadNotifCount(0);if(onClearNotifs)onClearNotifs();}}/>}
         {tab==="settings" && <SettingsTab user={user} signOut={signOut}/>}
       </div>
     </div>
@@ -2834,9 +3436,7 @@ function ProfilesPage({ onNav, onSelectRice }) {
               <span style={{fontStyle:"italic"}}>// </span>member since {new Date(user.createdAt).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
             </div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-              {earnedBadges.map(b=>(
-                <div key={b.id} style={{ fontSize:9, border:`1px solid ${b.color}44`, color:b.color, padding:"2px 9px", fontFamily:C.mono }}>{b.label}</div>
-              ))}
+              {earnedBadges.map(b=><BadgeChip key={b.id} badge={b}/>)}
             </div>
           </div>
           <div style={{ display:"flex", gap:28, flexShrink:0 }}>
@@ -2849,8 +3449,67 @@ function ProfilesPage({ onNav, onSelectRice }) {
           </div>
         </div>
 
-        <Tabs/>
-        {tab==="rice" && <RiceGrid/>}
+    <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:mobile?16:24 }}>
+      {[["rice","rice"],["liked","liked"],["issues","issues"],["notifs","notifs"],["settings","settings"]].map(([t,label])=>(
+        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"8px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:mobile?10:11, fontFamily:C.mono, marginBottom:-1, display:"flex", alignItems:"center", gap:4 }}>
+          {label}
+          {t==="notifs"&&unreadNotifCount>0&&<span style={{ background:"#f47244", color:"#fff", fontSize:7, padding:"1px 4px", lineHeight:1.4, borderRadius:2 }}>{unreadNotifCount}</span>}
+        </button>
+      ))}
+    </div>
+        {tab==="rice" && (
+        <div>
+          {rices.length===0 ? (
+            <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", padding:"20px 0" }}>// no rice published yet</div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr 1fr":"repeat(auto-fill,minmax(240px,1fr))", gap:mobile?8:12 }}>
+              {rices.map((r,i)=>(
+                <div key={r.id} className="card" style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:mobile?"10px":"14px", animation:`fadeUp .3s ease ${i*.06}s both`, cursor:r.status==="approved"?"pointer":"default" }}
+                  onClick={()=>{ if(r.status==="approved") onSelectRice(normalizeRice(r)); }}
+                >
+                  {r.cover_url && <div style={{ marginBottom:8, marginLeft:mobile?-10:-14, marginRight:mobile?-10:-14, marginTop:mobile?-10:-14 }}><img src={r.cover_url} alt={r.title} style={{ width:"100%", height:80, objectFit:"cover", display:"block" }}/></div>}
+                  <div className="ct" style={{ fontSize:mobile?11:12, color:C.white, marginBottom:3, transition:"color .15s", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.title}</div>
+                  <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div style={{ fontSize:9, color:r.status==="approved"?C.fn:C.string, fontStyle:"italic" }}>// {r.status}</div>
+                    {!mobile && <DeleteRiceButton riceId={r.id} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div onClick={()=>onNav("upload")} style={{ border:`1px dashed ${C.border}`, marginTop:12, cursor:"pointer", padding:mobile?"16px":"24px", textAlign:"center", fontSize:11, fontFamily:C.mono, color:C.gray3 }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=C.borderHi}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}
+          >+ upload new rice</div>
+        </div>
+      )}
+        {tab==="liked" && (
+        <div>
+          {likedRices.length===0 ? (
+            <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", padding:"20px 0" }}>// no liked rice yet</div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr 1fr":"repeat(auto-fill,minmax(240px,1fr))", gap:mobile?8:12 }}>
+              {likedRices.map((r,i)=>(
+                <div key={r.id} className="card" style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:mobile?"10px":"14px", animation:`fadeUp .3s ease ${i*.06}s both`, cursor:"pointer" }}
+                  onClick={()=>onSelectRice(normalizeRice(r))}
+                >
+                  {r.cover_url && <div style={{ marginBottom:8, marginLeft:mobile?-10:-14, marginRight:mobile?-10:-14, marginTop:mobile?-10:-14 }}><img src={r.cover_url} alt={r.title} style={{ width:"100%", height:80, objectFit:"cover", display:"block" }}/></div>}
+                  <div className="ct" style={{ fontSize:mobile?11:12, color:C.white, marginBottom:3, transition:"color .15s", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.title}</div>
+                  <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ fontSize:9, color:C.string }}>♥</span>
+                    <span style={{ fontSize:9, color:C.gray3 }}>{r.likes||0} likes</span>
+                    <span style={{ fontSize:9, color:C.gray3, marginLeft:"auto" }}>by @{r.author}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+        {tab==="issues" && <IssuesTab rices={rices} mobile={mobile}/>}
+        {tab==="notifs" && <NotificationsTab userId={user?.id} onRead={()=>{setUnreadNotifCount(0);if(onClearNotifs)onClearNotifs();}}/>}
         {tab==="settings" && <SettingsTab user={user} signOut={signOut}/>}
       </div>
     </div>
@@ -2864,13 +3523,12 @@ function AboutPage({ onNav, onProfiles }) {
     { role:"founder & creator",             name:"@andrei_chirva", bio:"obsessed with pixel-perfect interfaces. rose-pine forever.",               isFounder:true },
   ];
   const VALUES = [
-    { k:"open source",     v:"all of riceshare's code is public on GitHub. no lock-in, no black box." },
     { k:"community first", v:"product decisions come from the community. discord is where everything happens." },
     { k:"quality",         v:"every rice is reviewed before appearing in the gallery. we prefer fewer good rice over many mediocre ones." },
     { k:"simplicity",      v:"one command to install any setup. that's a promise we never want to break." },
   ];
   const TIMELINE = [
-    { date:"jan 2026", text:"first idea — a github repo with a bash script" },
+    { date:"jan 2026", text:"first idea — a bash script and a shared folder" },
     { date:"feb 2026", text:"first version of the gallery, 12 rice total" },
     { date:"mar 2026", text:"public launch v1.0.0 — early adopters open" },
     { date:"upcoming", text:"installer system, badges, theme marketplace" },
@@ -2879,72 +3537,81 @@ function AboutPage({ onNav, onProfiles }) {
   const mobile = useMobile();
   return (
     <div style={{ animation:"fadeIn .2s ease" }}>
-      <div style={{ maxWidth:860, margin:"0 auto", padding:mobile?"16px 16px 24px":"28px 40px 28px" }}>
-        <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:16 }}>// about</div>
-        <div style={{ fontFamily:C.display, fontSize:"clamp(28px,5vw,48px)", fontWeight:900, color:C.white, letterSpacing:"-0.04em", textTransform:"uppercase", marginBottom:8 }}>RICESHARE</div>
-        <div style={{ fontSize:13, color:C.gray2, fontFamily:C.mono, lineHeight:2, marginBottom:40, maxWidth:560 }}>
-          <span style={{ color:C.gray3, fontStyle:"italic" }}>// </span>
-          riceshare was born from the frustration of searching for dotfiles across reddit, github and telegram. we wanted one clean place, done right, with an installer that actually works. so we built it.
-        </div>
-        <div style={{ height:1, background:C.border, marginBottom:40 }}/>
+      <div style={{ maxWidth:820, margin:"0 auto", padding:mobile?"20px 16px 40px":"40px 40px 56px" }}>
 
-        <div style={{ marginBottom:48 }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>// our values</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,260px),1fr))", gap:12 }}>
+        {/* ── Hero ── */}
+        <div style={{ marginBottom:56 }}>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:14, letterSpacing:"0.1em" }}>// about riceshare</div>
+          <div style={{ fontFamily:C.display, fontSize:"clamp(32px,6vw,56px)", fontWeight:900, color:C.white, letterSpacing:"-0.04em", textTransform:"uppercase", lineHeight:1, marginBottom:20 }}>RICESHARE</div>
+          <div style={{ width:40, height:2, background:C.kw, marginBottom:24 }}/>
+          <div style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:2.1, maxWidth:520 }}>
+            riceshare was born from the frustration of searching for dotfiles across reddit, discord and telegram. we wanted one clean place, done right, with an installer that actually works. so we built it.
+          </div>
+        </div>
+
+        {/* ── Values ── */}
+        <div style={{ marginBottom:56 }}>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20, letterSpacing:"0.1em" }}>// our values</div>
+          <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"repeat(3,1fr)", gap:1, border:`1px solid ${C.border}` }}>
             {VALUES.map((v,i)=>(
-              <div key={v.k} style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"18px 20px", animation:`fadeUp .3s ease ${i*.08}s both` }}>
-                <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, fontWeight:500, marginBottom:8 }}><span style={{color:C.gray3}}>// </span>{v.k}</div>
+              <div key={v.k} style={{ padding:"20px 22px", background:C.bgCard, borderRight:i<VALUES.length-1&&!mobile?`1px solid ${C.border}`:"none", animation:`fadeUp .3s ease ${i*.08}s both` }}>
+                <div style={{ fontSize:10, color:C.kw, fontFamily:C.mono, fontWeight:500, marginBottom:10, letterSpacing:"0.05em", textTransform:"uppercase" }}>{v.k}</div>
                 <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{v.v}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ marginBottom:48 }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>// history</div>
-          {TIMELINE.map((t,i)=>(
-            <div key={t.date} style={{ display:"flex", gap:20, paddingBottom:20, borderBottom:i<TIMELINE.length-1?`1px solid ${C.border}`:"none", marginBottom:20, animation:`fadeUp .3s ease ${i*.07}s both` }}>
-              <div style={{ width:80, flexShrink:0 }}>
-                <span style={{ fontSize:10, fontFamily:C.mono, color:t.date==="upcoming"?C.string:C.kw, fontStyle:t.date==="upcoming"?"italic":"normal" }}>{t.date}</span>
-              </div>
-              <div style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{t.text}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginBottom:48 }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20 }}>// the team</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            {TEAM.map((m,i)=>(
-              <div key={m.name} style={{ border:`1px solid ${m.isFounder?C.gold+"44":C.border}`, background:m.isFounder?`${C.gold}06`:C.bgCard, padding:"18px 20px", display:"flex", gap:20, alignItems:"flex-start", animation:`fadeUp .3s ease ${i*.08}s both` }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6, flexWrap:"wrap" }}>
-                    <span onClick={()=>onProfiles&&onProfiles(m.name.replace("@",""))} style={{ fontSize:13, color:C.fn, fontFamily:C.mono, fontWeight:500, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}>{m.name}</span>
-                    <span style={{ fontSize:9, color:C.gray3, border:`1px solid ${C.border}`, padding:"1px 7px", fontFamily:C.mono }}>{m.role}</span>
-                    {m.isFounder && <FounderBadge/>}
-                  </div>
-                  <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{m.bio}</div>
+        {/* ── Timeline ── */}
+        <div style={{ marginBottom:56 }}>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:24, letterSpacing:"0.1em" }}>// history</div>
+          <div style={{ position:"relative", paddingLeft:20 }}>
+            <div style={{ position:"absolute", left:0, top:6, bottom:6, width:1, background:`linear-gradient(to bottom, ${C.kw}, ${C.border})` }}/>
+            {TIMELINE.map((t,i)=>(
+              <div key={t.date} style={{ display:"flex", gap:20, marginBottom:i<TIMELINE.length-1?28:0, position:"relative", animation:`fadeUp .3s ease ${i*.07}s both` }}>
+                <div style={{ position:"absolute", left:-24, top:5, width:8, height:8, borderRadius:"50%", background:t.date==="upcoming"?C.bgDeep:C.kw, border:`1px solid ${t.date==="upcoming"?C.string:C.kw}` }}/>
+                <div style={{ width:72, flexShrink:0 }}>
+                  <span style={{ fontSize:9, fontFamily:C.mono, color:t.date==="upcoming"?C.string:C.kw, fontStyle:t.date==="upcoming"?"italic":"normal", letterSpacing:"0.05em" }}>{t.date}</span>
                 </div>
+                <div style={{ fontSize:11, color:t.date==="upcoming"?C.gray3:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{t.text}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"24px 28px" }}>
-          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:12 }}>// join us</div>
-          <div style={{ fontSize:13, color:C.white, fontFamily:C.mono, marginBottom:20, lineHeight:1.9 }}>
-            riceshare is open source and community driven.<br/>
-            <span style={{ color:C.gray3 }}>// </span>contribute on GitHub, join the Discord, or simply upload your rice.
+        {/* ── Team ── */}
+        <div style={{ marginBottom:56 }}>
+          <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:20, letterSpacing:"0.1em" }}>// the team</div>
+          <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"repeat(2,1fr)", gap:12 }}>
+            {TEAM.map((m,i)=>(
+              <div key={m.name} style={{ border:`1px solid ${m.isFounder?C.gold+"55":C.border}`, background:m.isFounder?`${C.gold}06`:C.bgCard, padding:"20px 22px", animation:`fadeUp .3s ease ${i*.08}s both` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+                  <span onClick={()=>onProfiles&&onProfiles(m.name.replace("@",""))} style={{ fontSize:13, color:C.fn, fontFamily:C.mono, fontWeight:600, cursor:"pointer", textDecoration:"underline", textDecorationColor:C.fn+"44" }}>{m.name}</span>
+                  {m.isFounder && <FounderBadge/>}
+                </div>
+                <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, marginBottom:10, letterSpacing:"0.04em" }}>{m.role}</div>
+                <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{m.bio}</div>
+              </div>
+            ))}
           </div>
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-            <a href="https://github.com/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-              <button className="bs" style={{ padding:"9px 22px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>GitHub →</button>
-            </a>
+        </div>
+
+        {/* ── Join us ── */}
+        <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:mobile?"22px 20px":"32px 36px", display:"flex", flexDirection:mobile?"column":"row", alignItems:mobile?"flex-start":"center", justifyContent:"space-between", gap:20 }}>
+          <div>
+            <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:10, letterSpacing:"0.1em" }}>// join us</div>
+            <div style={{ fontSize:mobile?12:13, color:C.white, fontFamily:C.mono, lineHeight:1.9 }}>
+              riceshare is community driven.<br/>
+              <span style={{ color:C.gray3 }}>// </span><span style={{ color:C.gray2 }}>join Discord, share feedback, or simply upload your rice.</span>
+            </div>
+          </div>
+          <div style={{ flexShrink:0 }}>
             <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-              <button className="bg" style={{ padding:"9px 22px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>Discord</button>
+              <button className="bs" style={{ padding:"10px 28px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s", whiteSpace:"nowrap" }}>Discord →</button>
             </a>
           </div>
         </div>
+
       </div>
     </div>
   );
@@ -2976,10 +3643,9 @@ function Footer({ setPage }) {
           <div style={{ display:"flex", alignItems:"center", gap:16 }}>
             <span style={{ fontFamily:C.display, fontSize:13, fontWeight:800, color:C.white, letterSpacing:"-0.02em", textTransform:"uppercase" }}>Riceshare</span>
             <span style={{ fontSize:10, fontFamily:C.mono, color:C.gray3 }}>v1.0.0</span>
-            <span style={{ fontSize:10, fontFamily:C.mono, color:C.gray3, fontStyle:"italic" }}>// open source</span>
+
           </div>
           <div style={{ display:"flex", gap:20, alignItems:"center", flexWrap:"wrap" }}>
-            <Link label="github"    href="https://github.com/riceshare"/>
             <Link label="docs"      page="docs"/>
             <Link label="discord"   href="https://discord.gg/riceshare"/>
             <Link label="instagram" href="#" />
@@ -3094,7 +3760,7 @@ function SToggle({ label, checked, onChange }) {
   );
 }
 
-function UploadPage({ trustLevel=1, onGoHome }) {
+function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
   const { user } = useUser();
   const mobile = useMobile();
   const [step, setStep]   = useState(0);
@@ -3151,22 +3817,26 @@ function UploadPage({ trustLevel=1, onGoHome }) {
     img.src = url;
   });
 
-  // Converte qualsiasi immagine in WebP downscalata (max 1920px, quality 0.82)
+  // Converte qualsiasi immagine in WebP scalata a max 720p (quality 0.82)
   const toWebP = (file) => new Promise(resolve => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      const MAX = 1920;
+      const MAX_W = 1280; // 720p landscape
+      const MAX_H = 720;
       let { width: w, height: h } = img;
-      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
-      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      // Scala mantenendo aspect ratio entro 1280x720
+      const scaleW = w > MAX_W ? MAX_W / w : 1;
+      const scaleH = h > MAX_H ? MAX_H / h : 1;
+      const scale = Math.min(scaleW, scaleH);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
       const canvas = document.createElement("canvas");
       canvas.width = w; canvas.height = h;
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
       canvas.toBlob(blob => {
         if (!blob) { resolve(file); return; }
-        // Rinomina il file con estensione .webp
         const name = file.name.replace(/\.[^.]+$/, "") + ".webp";
         resolve(new File([blob], name, { type:"image/webp" }));
       }, "image/webp", 0.82);
@@ -3281,7 +3951,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
         likes:       0,
         installs:    0,
         featured:    false,
-        status:      trustLevel <= 1 ? 'pending' : 'approved',
+        status:      (trustLevel === null || (trustLevel <= 1 && userBadge !== 'founder')) ? 'pending' : 'approved',
       });
       if (error) {
         throw new Error(error.message || error.details || error.hint || JSON.stringify(error));
@@ -3290,7 +3960,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
       // Auto-compute badges after upload
       try {
         const [{ data: allMyRices }, { data: userData }] = await Promise.all([
-          supabase.from('rice').select('*').eq('author_id', user.id),
+          supabase.from('rice').select('*, users(username)').eq('author_id', user.id),
           supabase.from('users').select('created_at').eq('id', user.id).single(),
         ]);
         await computeBadges(user.id, allMyRices || [], userData?.created_at, supabase);
@@ -3338,7 +4008,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
         </div>
 
         {/* Comando install */}
-        <div style={{ width:"100%", border:`1px solid ${C.border}`, background:C.bgDeep, marginBottom:trustLevel<=1?16:28 }}>
+        <div style={{ width:"100%", border:`1px solid ${C.border}`, background:C.bgDeep, marginBottom:trustLevel!==null&&trustLevel<=1&&userBadge!=='founder'?16:28 }}>
           <div style={{ padding:"6px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, textAlign:"left", letterSpacing:"0.08em" }}>install command</div>
           <div style={{ padding:"12px 16px", display:"flex", gap:10, alignItems:"center" }}>
             <span style={{ color:C.gray3, flexShrink:0 }}>$</span>
@@ -3347,7 +4017,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
         </div>
 
         {/* Avviso revisione */}
-        {trustLevel<=1 && (
+        {trustLevel!==null && trustLevel<=1 && userBadge!=='founder' && (
           <div style={{ width:"100%", padding:"10px 14px", border:`1px solid ${C.string}44`, background:`${C.string}08`, fontSize:11, fontFamily:C.mono, color:C.string, marginBottom:28, textAlign:"left", lineHeight:1.8 }}>
             <span style={{fontStyle:"italic"}}>// </span>il rice è in attesa di revisione — apparirà in gallery dopo l'approvazione.
           </div>
@@ -3372,7 +4042,7 @@ function UploadPage({ trustLevel=1, onGoHome }) {
 
   return (
     <div style={{ animation:"fadeIn .2s ease", padding:mobile?"16px 16px 32px":"32px 32px 48px" }}>
-      {trustLevel<=1 && (
+      {trustLevel !== null && trustLevel <= 1 && userBadge !== 'founder' && (
         <div style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 16px", border:`1px solid ${C.string}44`, background:`${C.string}08`, marginBottom:16, fontSize:11, fontFamily:C.mono, color:C.string }}>
           <span style={{ fontSize:9, border:`1px solid ${C.string}55`, padding:"1px 7px", flexShrink:0 }}>member</span>
           <span style={{ color:C.gray2 }}><span style={{fontStyle:"italic",color:C.gray3}}>// </span>your rice will be reviewed before appearing in gallery — <span style={{color:C.string}}>trusted</span> level requires 1 approved rice</span>
@@ -3686,12 +4356,12 @@ function UploadPage({ trustLevel=1, onGoHome }) {
                 <div style={{marginBottom:4}}><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>upload your dotfiles — config folders, shell rc files, wallpaper, etc.</div>
                 <div><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>lo script <span style={{color:C.fn}}>install.sh</span> script and <span style={{color:C.fn}}>meta.json</span> files are generated automatically. no need to include them.</div>
               </div>
-              <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);addFiles(e.dataTransfer.filess);}} onClick={()=>filesRef.current?.click()}
+              <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);addFiles(e.dataTransfer.files);}} onClick={()=>filesRef.current?.click()}
                 style={{ border:`1px dashed ${dragging?C.white:C.border}`, padding:"36px 24px", textAlign:"center", cursor:"pointer", background:dragging?"#ffffff06":"transparent", transition:"all .2s" }}>
                 <div style={{ fontSize:20, color:C.gray3, marginBottom:10 }}>+</div>
-                <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, marginBottom:4 }}>drag filess here, or <span style={{color:C.white}}>browse</span></p>
+                <p style={{ fontSize:12, color:C.gray2, fontFamily:C.mono, marginBottom:4 }}>drag files here, or <span style={{color:C.white}}>browse</span></p>
                 <p style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>.conf .toml .lua .sh .png .jpg .ttf — any config files</p>
-                <input ref={filesRef} type="files" multiple style={{ display:"none" }} onChange={e=>addFiles(e.target.filess)}/>
+                <input ref={filesRef} type="file" multiple style={{ display:"none" }} onChange={e=>addFiles(e.target.files)}/>
               </div>
               <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, padding:"14px 16px" }}>
                 <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", marginBottom:10 }}>RECOMMENDED STRUCTURE</div>
@@ -3735,23 +4405,76 @@ function UploadPage({ trustLevel=1, onGoHome }) {
 
 /* ── APP ─────────────────────────────────────────────────────────── */
 export default function App() {
-  const [page, setPage]               = useState("home");
+  const [page, setPageRaw]            = useState("home");
   const [selected, setSelected]       = useState(null);
   const [profilesAuthor, setProfilesAuthor] = useState(null);
-  const { user } = useUser();
+
+  // Scroll position memory: save/restore gallery scroll when entering/leaving detail
+  const savedScrollRef = useRef(0);
+
+  // History API: push state on every page change, serializing selected rice id
+  const setPage = (newPage, riceObj = null) => {
+    try { sessionStorage.setItem('rs_page', newPage); } catch(e) {}
+    const state = { page: newPage, selectedId: riceObj?.id ?? null };
+    window.history.pushState(state, "", "");
+    setPageRaw(newPage);
+  };
+
+  // Ripristina pagina da sessionStorage dopo hydration (evita SSR mismatch)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('rs_page');
+      if (saved && !['detail','pubprofiles'].includes(saved)) {
+        setPageRaw(saved);
+      }
+    } catch(e) {}
+  }, []);
+
+  // Handle OS/browser back button
+  useEffect(() => {
+    const onPop = (e) => {
+      const state = e.state || {};
+      const prev = state.page || "home";
+      // Restore selected rice from history state if available
+      if (state.selectedId) {
+        // We only have the id; keep current selected if ids match, else clear
+        setSelected(sel => (sel?.id === state.selectedId ? sel : null));
+      } else {
+        setSelected(null);
+      }
+      setPageRaw(prev);
+      // Restore scroll position when going back to gallery
+      if (prev === "home") {
+        requestAnimationFrame(() => {
+          const el = document.querySelector(".content-area");
+          if (el) el.scrollTop = savedScrollRef.current;
+        });
+      }
+    };
+    // Push initial state so back from first page doesn't close the site
+    window.history.replaceState({ page: "home", selectedId: null }, "", "");
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const { user, isLoaded: clerkLoaded } = useUser();
   const isLoggedIn = !!user;
 
   // Legge trustLevel e badge reale da Supabase
-  const [trustLevel, setTrustLevel] = useState(1);
+  const [trustLevel, setTrustLevel] = useState(null); // null = loading, shows banner only after DB confirms
   const [userBadge,  setUserBadge]  = useState("member");
+  const [navUnread,  setNavUnread]  = useState(0);
+  const [tagClick,   setTagClick]   = useState(null);
   useEffect(() => {
     if (!user) return;
     import('../lib/supabase').then(({ supabase }) => {
-      supabase.from('users').select('trust_level,badge').eq('id', user.id).single()
-        .then(({ data }) => {
-          if (data?.trust_level != null) setTrustLevel(data.trust_level);
-          if (data?.badge)               setUserBadge(data.badge);
-        });
+      Promise.all([
+        supabase.from('users').select('trust_level,badge').eq('id', user.id).single(),
+        supabase.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('read',false),
+      ]).then(([{ data }, { count }]) => {
+        if (data?.trust_level != null) setTrustLevel(data.trust_level);
+        if (data?.badge)               setUserBadge(data.badge);
+        setNavUnread(count || 0);
+      });
     });
   }, [user]);
 
@@ -3760,8 +4483,30 @@ export default function App() {
     window.scrollTo(0,0);
   };
 
-  const go   = r => { setSelected(r); setPage("detail"); scrollTop(); };
-  const back = () => { setSelected(null); setPage("home"); scrollTop(); };
+  const go   = r => {
+    // Track view history in localStorage
+    try {
+      const views = JSON.parse(localStorage.getItem('rs_views') || '[]');
+      const updated = [r.id, ...views.filter(id => id !== r.id)].slice(0, 30);
+      localStorage.setItem('rs_views', JSON.stringify(updated));
+    } catch(e) {}
+    // Save current gallery scroll position before entering detail
+    const el = document.querySelector(".content-area");
+    if (el) savedScrollRef.current = el.scrollTop;
+    setSelected(r);
+    setPage("detail", r);
+    scrollTop();
+  };
+  const back = () => {
+    const scrollY = savedScrollRef.current;
+    setSelected(null);
+    setPage("home");
+    // Restore scroll position after the home page renders
+    requestAnimationFrame(() => {
+      const el = document.querySelector(".content-area");
+      if (el) el.scrollTop = scrollY;
+    });
+  };
 
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
@@ -3770,6 +4515,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Don't reset scroll for "home" — it will be handled by back() or onPop to restore position
+    if (page === "home") return;
     const el  = document.querySelector(".content-area");
     const doc = document.getElementById("docs-scroll");
     if (el)  el.scrollTop  = 0;
@@ -3780,26 +4527,26 @@ export default function App() {
     <>
       <style>{GS}</style>
       <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:200 }}>
-        <Navbar page={page} setPage={setPage} isAdmin={userBadge==="founder"||userBadge==="staff"}/>
+        <Navbar page={page} setPage={setPage} isAdmin={userBadge==="founder"||userBadge==="staff"} navUnread={navUnread}/>
       </div>
       <div style={{ position:"fixed", bottom:0, left:0, right:0, zIndex:200 }}>
         <Footer setPage={setPage}/>
       </div>
       <div className="content-area" style={{ position:"fixed", top:44, bottom:52, left:0, right:0, overflowY:"auto", background:C.bg }}>
         <PageShell key={page}>
-          {page==="home"       && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}}/>}
-          {page==="detail"     && selected && <DetailPage rice={selected} onBack={back} currentUser={user} userBadge={userBadge} onProfiles={()=>{
+          {clerkLoaded && page==="home"       && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}} tagClick={tagClick} onTagClickConsumed={()=>setTagClick(null)}/>}
+          {page==="detail"     && selected && <DetailPage rice={selected} onBack={back} currentUser={user} userBadge={userBadge} onTagClick={t=>{setTagClick(t);back();}} onProfiles={()=>{
             const isOwner = user && (user.username === selected.author || user.firstName === selected.author);
             if (isOwner) { setPage("profiles"); scrollTop(); }
             else { setProfilesAuthor(selected.author); setPage("pubprofiles"); scrollTop(); }
           }}/>}
-          {page==="upload"     && (isLoggedIn ? <UploadPage trustLevel={trustLevel} onGoHome={()=>{setPage("home");scrollTop();}}/> : <UploadGate onLogin={()=>{window.location.href='/sign-in';}}/>)}
+          {clerkLoaded && page==="upload"     && (isLoggedIn ? <UploadPage trustLevel={trustLevel} userBadge={userBadge} onGoHome={()=>{setPage("home");scrollTop();}}/> : <UploadGate onLogin={()=>{window.location.href='/sign-in';}}/>)}
           {page==="docs"       && <DocsPage/>}
           {page==="terms"      && <TermsPage onNav={setPage}/>}
           {page==="privacy"    && <PrivacyPage onNav={setPage}/>}
           {page==="about"      && <AboutPage onProfiles={author=>{ setProfilesAuthor(author); setPage("pubprofiles"); scrollTop(); }}/>}
-          {page==="profiles"    && <ProfilesPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
-          {page==="pubprofiles" && <PublicProfilesPage author={profilesAuthor} onBack={()=>{setPage(selected?"detail":"home");scrollTop();}} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
+          {clerkLoaded && page==="profiles"    && <ProfilesPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}} onClearNotifs={()=>setNavUnread(0)}/>}
+          {clerkLoaded && page==="pubprofiles" && <PublicProfilesPage author={profilesAuthor} onBack={()=>{setPage(selected?"detail":"home");scrollTop();}} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
           {page==="admin"       && (userBadge==="founder"||userBadge==="staff") && <AdminPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}} onSelectUser={u=>{setProfilesAuthor(u.username||u.clerk_id);setPage("pubprofiles");scrollTop();}}/>}
         </PageShell>
       </div>
