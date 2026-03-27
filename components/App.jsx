@@ -875,6 +875,35 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
     </div>
   );
 
+  /* ── DEPS COPY CARD (sidebar) ── */
+  const DepsCopyCard = ({ deps, distro }) => {
+    const [copied, setCopied] = React.useState(false);
+    const mgr = distro && distro.toLowerCase().includes("arch") ? "paru -S" :
+                 distro && distro.toLowerCase().includes("ubuntu") ? "apt install" :
+                 distro && distro.toLowerCase().includes("fedora") ? "dnf install" :
+                 "paru -S";
+    const cmd = `${mgr} ${deps.join(" ")}`;
+    const doCopy = () => {
+      navigator.clipboard?.writeText(cmd).catch(()=>{});
+      setCopied(true); setTimeout(()=>setCopied(false), 2000);
+    };
+    return (
+      <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep }}>
+        <div style={{ padding:"6px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// DEPS</span>
+          <button onClick={doCopy} style={{ padding:"2px 10px", border:`1px solid ${C.fn}55`, background:"transparent", color:copied?C.fn:C.gray2, cursor:"pointer", fontSize:9, fontFamily:C.mono, transition:"all .15s" }}>
+            {copied ? "✓ copied" : "copy all"}
+          </button>
+        </div>
+        <div style={{ padding:"10px 14px", display:"flex", flexWrap:"wrap", gap:5 }}>
+          {deps.map(d=>(
+            <span key={d} style={{ fontSize:10, fontFamily:C.mono, color:C.fn, border:`1px solid ${C.fn}33`, padding:"2px 8px", background:`${C.fn}09` }}>{d}</span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const SidebarContent = () => (
     <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -895,6 +924,9 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
           </div>
         ))}
       </div>
+      {rice.deps && rice.deps.length > 0 && (
+        <DepsCopyCard deps={rice.deps} distro={rice.distro}/>
+      )}
       <div style={{ padding:"10px 12px", border:`1px solid ${C.border}`, fontSize:10, color:C.gray3, fontFamily:C.mono, lineHeight:1.7 }}>
         <span style={{fontStyle:"italic"}}>// </span>auto backup in <code style={{color:C.fn}}>~/.rice-backup/</code>
       </div>
@@ -1407,6 +1439,8 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
   const [loading, setLoading]   = useState(true);
   const [userSearch, setUserSearch] = useState("");
   const [msg, setMsg]           = useState("");
+  const [deleteModal, setDeleteModal] = useState(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const flash = (m) => { setMsg(m); setTimeout(()=>setMsg(""), 3000); };
 
@@ -1416,7 +1450,7 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
     const [pend, reps, hist, usrs, allRice] = await Promise.all([
       supabase.from('rice').select('*, users(username)').eq('status','pending').order('created_at',{ascending:false}),
       supabase.from('reports').select('*, rice(*, users(username))').eq('status','open').order('created_at',{ascending:false}),
-      supabase.from('reports').select('id,rice_id,reason,notes,action,status,resolved_at,resolved_by,reporter_id, rice(id,title)').neq('status','open').order('resolved_at',{ascending:false}).limit(100),
+      supabase.from('reports').select('id,rice_id,reason,notes,action,status,resolved_at,resolved_by,reporter_id, rice(id,title,author_id)').neq('status','open').order('resolved_at',{ascending:false}).limit(100),
       supabase.from('users').select('*').order('created_at',{ascending:false}),
       supabase.from('rice').select('id,installs,status'),
     ]);
@@ -1463,7 +1497,7 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
     flash("✓ rice rejected");
   };
 
-  const deleteRice = async (riceId) => {
+  const deleteRice = async (riceId, reason, authorId, riceName) => {
     const { supabase } = await import('../lib/supabase');
     const now = new Date().toISOString();
     const adminId = adminUser?.id || null;
@@ -1477,6 +1511,18 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
     }
     await supabase.from('rice_likes').delete().eq('rice_id', riceId);
     await supabase.from('rice').delete().eq('id', riceId);
+    if (authorId) {
+      await supabase.from('notifications').insert({
+        user_id: authorId,
+        type: 'rice_deleted',
+        rice_name: riceName || 'unknown',
+        message: reason || '',
+        read: false,
+        created_at: now,
+      });
+    }
+    setDeleteModal(null);
+    setDeleteReason("");
     flash("✓ rice deleted");
   };
 
@@ -1518,6 +1564,37 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
 
   return (
     <div style={{ padding:mobile?"14px 14px 32px":"28px 32px 48px", animation:"fadeIn .2s ease" }}>
+      {/* ── DELETE RICE MODAL ── */}
+      {deleteModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.78)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ background:C.bgDeep, border:"1px solid #a0585866", padding:28, maxWidth:460, width:"100%", fontFamily:C.mono }}>
+            <div style={{ fontSize:13, color:"#c07070", marginBottom:8, fontWeight:600 }}>🗑 delete rice</div>
+            <div style={{ fontSize:11, color:C.gray2, marginBottom:16, lineHeight:1.6 }}>
+              stai per eliminare <span style={{ color:C.white }}>"{deleteModal.riceName}"</span>.<br/>
+              l'autore riceverà una notifica. aggiungi una motivazione (opzionale):
+            </div>
+            <textarea
+              value={deleteReason}
+              onChange={e=>setDeleteReason(e.target.value)}
+              placeholder="motivazione dell'eliminazione..."
+              maxLength={500}
+              rows={4}
+              style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:11, padding:"8px 10px", resize:"vertical", outline:"none", boxSizing:"border-box" }}
+            />
+            <div style={{ fontSize:9, color:C.gray3, marginTop:4, marginBottom:14 }}>{deleteReason.length}/500</div>
+            <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+              <button onClick={()=>{ setDeleteModal(null); setDeleteReason(""); }}
+                style={{ padding:"6px 18px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>
+                annulla
+              </button>
+              <button onClick={()=>deleteRice(deleteModal.riceId, deleteReason, deleteModal.authorId, deleteModal.riceName)}
+                style={{ padding:"6px 18px", border:"1px solid #a0585866", background:"#a0585820", color:"#c07070", cursor:"pointer", fontSize:10, fontFamily:C.mono, fontWeight:600 }}>
+                conferma eliminazione
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ maxWidth:960, margin:"0 auto" }}>
 
         {/* Header */}
@@ -1628,7 +1705,7 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={()=>deleteRice(r.rice_id)} style={{ padding:"5px 14px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:10, fontFamily:C.mono }}>delete rice</button>
+                  <button onClick={()=>{ setDeleteModal({ riceId:r.rice_id, riceName:r.rice?.title||r.rice_id, authorId:r.rice?.author_id||null }); setDeleteReason(""); }} style={{ padding:"5px 14px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:10, fontFamily:C.mono }}>delete rice</button>
                   <button onClick={()=>dismissReport(r.id)} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>dismiss</button>
                 </div>
               </div>
@@ -1744,6 +1821,7 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
   const [sortBy, setSortBy]         = useState("newest");
   const [forYouRices, setForYouRices] = useState([]);
   const [forYouLoading, setForYouLoading] = useState(false);
+  const [popularTags, setPopularTags] = useState([]);
   const [forYouLoaded, setForYouLoaded]   = useState(false);
   const { user } = useUser();
 
@@ -1756,7 +1834,15 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
         .order('created_at', { ascending: false })
         .then(({ data, error }) => {
           if (error) { setNetError(true); }
-          else if (data) setRices(data.map(normalizeRice));
+          else if (data) {
+            const normalized = data.map(normalizeRice);
+            setRices(normalized);
+            // Calcola tag più frequenti
+            const freq = {};
+            normalized.forEach(r => (r.tags||[]).forEach(t => { freq[t] = (freq[t]||0)+1; }));
+            const top = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([t])=>t);
+            setPopularTags(top);
+          }
           setLoading(false);
         });
     }).catch(() => { setNetError(true); setLoading(false); });
@@ -1877,11 +1963,11 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
               find, share &amp; install linux rice<br/>
               <span style={{ color:C.gray3 }}>one command, one click.</span>
             </div>
-            <div style={{ display:"flex", gap:8 }}>
-              <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none", flex:1 }}>
-                <button className="bs" style={{ width:"100%", padding:"9px 0", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>discord →</button>
+            <div style={{ display:"flex", gap:8, alignItems:"stretch" }}>
+              <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none", flex:1, display:"flex" }}>
+                <button className="bs" style={{ width:"100%", padding:"10px 0", border:"none", background:C.fn, color:C.bg, cursor:"pointer", fontSize:11, fontFamily:C.mono, fontWeight:700, boxShadow:`0 0 14px ${C.fn}55` }}>discord →</button>
               </a>
-              <button className="bg" onClick={onUpload} style={{ flex:1, padding:"9px 0", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>upload</button>
+              <button className="bg" onClick={onUpload} style={{ flex:1, padding:"10px 0", border:`2px solid ${C.borderHi}`, background:"rgba(255,255,255,0.04)", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, fontWeight:600 }}>upload</button>
             </div>
           </div>
         ) : (
@@ -1895,29 +1981,64 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
                 find, share &amp; install linux rice — one command, one click.<br/>
                 <span style={{ color:C.gray3 }}>your desktop. your rules.</span>
               </p>
-              <div style={{ display:"flex", gap:10 }}>
-                <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-                  <button className="bs" style={{ padding:"10px 24px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>join discord →</button>
+              <div style={{ display:"flex", gap:10, alignItems:"stretch" }}>
+                <a href="https://discord.gg/riceshare" target="_blank" rel="noreferrer" style={{ textDecoration:"none", display:"inline-flex", alignItems:"stretch" }}>
+                  <button className="bs"
+                    style={{ padding:"11px 28px", border:"none", background:C.fn, color:C.bg, cursor:"pointer", fontSize:11, fontFamily:C.mono, fontWeight:700, letterSpacing:"0.04em", transition:"all .2s", boxShadow:`0 0 18px ${C.fn}66` }}
+                    onMouseEnter={e=>{ e.currentTarget.style.boxShadow=`0 0 28px ${C.fn}aa`; e.currentTarget.style.transform="translateY(-1px)"; }}
+                    onMouseLeave={e=>{ e.currentTarget.style.boxShadow=`0 0 18px ${C.fn}66`; e.currentTarget.style.transform="none"; }}
+                  >join discord →</button>
                 </a>
-                <button className="bg" onClick={onUpload} style={{ padding:"10px 24px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"all .15s" }}>upload rice</button>
+                <button className="bg" onClick={onUpload}
+                  style={{ padding:"11px 28px", border:`2px solid ${C.borderHi}`, background:"rgba(255,255,255,0.04)", color:C.white, cursor:"pointer", fontSize:11, fontFamily:C.mono, fontWeight:600, letterSpacing:"0.04em", transition:"all .2s" }}
+                  onMouseEnter={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.09)"; e.currentTarget.style.transform="translateY(-1px)"; }}
+                  onMouseLeave={e=>{ e.currentTarget.style.background="rgba(255,255,255,0.04)"; e.currentTarget.style.transform="none"; }}
+                >upload rice</button>
               </div>
             </div>
-            {/* Right: stats */}
-            <div style={{ display:"flex", flexDirection:"column", gap:0, fontFamily:C.mono, borderLeft:`1px solid ${C.border}`, paddingLeft:32 }}>
-              {[
-                {v:loading?"—":String(rices.length),          l:"rice shared"},
-                {v:loading?"—":fmt(rices.reduce((a,r)=>a+(r.installs||0),0)), l:"total installs"},
-                {v:loading?"—":String(new Set(rices.map(r=>r.author).filter(Boolean)).size), l:"authors"},
-              ].map((s,i)=>(
-                <div key={s.l} style={{ padding:"10px 0", borderBottom:i<2?`1px solid ${C.border}`:"none" }}>
-                  <div style={{ fontSize:26, fontWeight:700, color:C.white, lineHeight:1 }}>{s.v}</div>
-                  <div style={{ fontSize:9, color:C.gray3, marginTop:3, letterSpacing:"0.08em", textTransform:"uppercase" }}>{s.l}</div>
-                </div>
-              ))}
+            {/* Right: stats card */}
+            <div style={{ fontFamily:C.mono, border:`1px solid ${C.border}`, background:C.bgDeep, minWidth:220 }}>
+              {/* header */}
+              <div style={{ padding:"6px 14px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background:C.fn, display:"inline-block", flexShrink:0 }}/>
+                <span style={{ fontSize:9, color:C.gray3, letterSpacing:"0.1em", textTransform:"uppercase" }}>// live stats</span>
+              </div>
+              {/* 2-col grid */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
+                {[
+                  {v:loading?"—":String(rices.length),                                                            l:"rice shared"},
+                  {v:loading?"—":String(new Set(rices.map(r=>r.author).filter(Boolean)).size),                    l:"authors"},
+                  {v:loading?"—":fmt(rices.reduce((a,r)=>a+(r.installs||0),0)),                                   l:"installs"},
+                  {v:loading?"—":fmt(rices.reduce((a,r)=>a+(r.likes||0),0)),                                      l:"total likes"},
+                ].map((s,i)=>(
+                  <div key={s.l} style={{
+                    padding:"14px 16px",
+                    borderBottom:i<2?`1px solid ${C.border}`:"none",
+                    borderRight:i%2===0?`1px solid ${C.border}`:"none",
+                  }}>
+                    <div style={{ fontSize:22, fontWeight:800, color:C.fn, lineHeight:1, letterSpacing:"-0.03em" }}>{s.v}</div>
+                    <div style={{ fontSize:8, color:C.gray3, marginTop:5, letterSpacing:"0.1em", textTransform:"uppercase" }}>{s.l}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* ── POPULAR TAGS ── */}
+      {popularTags.length > 0 && (
+        <div style={{ padding:mobile?"10px 14px":"10px 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", overflowX:"auto" }}>
+          <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", flexShrink:0 }}>// trending</span>
+          {popularTags.map(t=>(
+            <button key={t} onClick={()=>{ setSearch(t); setFeedTab("explore"); }}
+              style={{ padding:"2px 10px", border:`1px solid ${C.kw}44`, background:"transparent", color:C.kw, cursor:"pointer", fontSize:9, fontFamily:C.mono, transition:"all .15s", flexShrink:0 }}
+              onMouseEnter={e=>{ e.currentTarget.style.background=C.kw+"22"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background="transparent"; }}
+            >#{t}</button>
+          ))}
+        </div>
+      )}
 
       {/* ── FEED TABS ── */}
       <div style={{ padding:mobile?"0 14px":"0 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep, display:"flex", alignItems:"center" }}>
@@ -1980,35 +2101,47 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
           </div>
         </div> : <div style={{ borderBottom:`1px solid ${C.border}` }}/>
       ) : (
-        // Desktop: search bar + view toggle
+        // Desktop: unified filter bar
         feedTab === "explore" ? <>
-          <div style={{ padding:"10px 32px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:8, alignItems:"center", background:C.bgDeep }}>
+          {/* Row 1: search + sort + view toggle */}
+          <div style={{ padding:"8px 32px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:8, alignItems:"center", background:C.bgDeep }}>
+            {/* label */}
+            <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, letterSpacing:"0.08em", flexShrink:0, userSelect:"none" }}>// filter</span>
+            {/* search input */}
             <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, border:`1px solid ${C.border}`, padding:"7px 12px" }}>
               <span style={{ color:C.gray3, fontSize:11 }}>{">"}</span>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder='search("rice or author")' style={{ background:"none", border:"none", outline:"none", color:C.white, fontSize:11, fontFamily:C.mono, width:"100%" }}/>
               {search && <button onClick={()=>setSearch("")} style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:14, padding:0, lineHeight:1 }}>×</button>}
             </div>
+            {/* sort buttons */}
+            <div style={{ display:"flex", overflow:"hidden", border:`1px solid ${C.border}` }}>
+              {[["newest","↓ newest"],["popular","♥ popular"],["trending","↑ trending"]].map(([v,l],i,a)=>(
+                <button key={v} onClick={()=>setSortBy(v)} style={{ padding:"7px 12px", border:"none", borderRight:i<a.length-1?`1px solid ${C.border}`:"none", background:sortBy===v?C.fn:"transparent", color:sortBy===v?"#111":C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .15s", fontWeight:sortBy===v?600:400 }}>{l}</button>
+              ))}
+            </div>
+            {/* view toggle */}
             <div style={{ display:"flex", border:`1px solid ${C.border}`, overflow:"hidden" }}>
               {[["grid","▦"],["list","≡"]].map(([v,ic])=>(
-                <button key={v} onClick={()=>setView(v)} style={{ padding:"7px 14px", border:"none", background:view===v?C.white:"transparent", color:view===v?"#111":C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono, transition:"all .15s" }}>{ic}</button>
+                <button key={v} onClick={()=>setView(v)} style={{ padding:"7px 13px", border:"none", background:view===v?C.white:"transparent", color:view===v?"#111":C.gray3, cursor:"pointer", fontSize:12, transition:"all .15s" }}>{ic}</button>
               ))}
             </div>
+            {/* results count */}
+            <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, flexShrink:0, whiteSpace:"nowrap" }}>{filtered.length} results</span>
           </div>
-          {/* WM filter tabs */}
-          <div style={{ padding:"0 32px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center" }}>
+          {/* Row 2: WM filter tabs with orange accent */}
+          <div style={{ padding:"0 32px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", background:C.bg }}>
             {wms.map(f=>(
-              <button key={f} className="tb" onClick={()=>setWmFilter(f)} style={{ padding:"9px 14px", background:"none", border:"none", borderBottom:wmFilter===f?`1px solid ${C.white}`:"1px solid transparent", color:wmFilter===f?C.white:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
-                {f==="all"?"*.all":f}
+              <button key={f} className="tb" onClick={()=>setWmFilter(f)} style={{
+                padding:"8px 14px", background:"none", border:"none",
+                borderBottom:wmFilter===f?`2px solid ${C.fn}`:"2px solid transparent",
+                color:wmFilter===f?C.fn:C.gray2,
+                cursor:"pointer", fontSize:10, fontFamily:C.mono,
+                marginBottom:-1, transition:"color .15s, border-color .15s",
+                fontWeight:wmFilter===f?600:400,
+              }}>
+                {f==="all"?"all":f}
               </button>
             ))}
-            <div style={{ flex:1 }}/>
-            {/* Sort selector */}
-            <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}`, overflow:"hidden", marginRight:12 }}>
-              {[["newest","newest"],["popular","popular"],["trending","trending"]].map(([v,l])=>(
-                <button key={v} onClick={()=>setSortBy(v)} style={{ padding:"6px 12px", border:"none", background:sortBy===v?C.white:"transparent", color:sortBy===v?"#111":C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .15s", borderRight:`1px solid ${C.border}` }}>{l}</button>
-              ))}
-            </div>
-            <span style={{ fontSize:9, color:C.gray3 }}>{filtered.length} results</span>
           </div>
         </> : <div style={{ borderBottom:`1px solid ${C.border}` }}/>
       )}
@@ -2875,8 +3008,22 @@ function NotificationsTab({ userId, onRead }) {
     });
   }, [userId]);
 
-  const typeIcon = { like:'♥', comment:'💬', issue:'⚠️', follow:'👤', rice_deleted:'🗑' };
-  const typeColor = { like:'#f43f5e', comment:C.fn, issue:'#ef4444', follow:'#818cf8', rice_deleted:C.string };
+  const typeIcon  = { like:'♥', comment:'💬', issue:'⚠️', follow:'👤', rice_deleted:'🗑' };
+  const typeColor = { like:'#f43f5e', comment:C.fn, issue:'#ef4444', follow:'#818cf8', rice_deleted:'#f87171' };
+  const typeTitle = {
+    like:         '♥ new like on your rice',
+    comment:      '💬 new comment on your rice',
+    issue:        '⚠️ issue reported on your rice',
+    follow:       '👤 someone followed you',
+    rice_deleted: '🗑 your rice was removed by an admin',
+  };
+  const typeSub = {
+    like:         (n) => n.rice_name ? `someone liked "${n.rice_name}"` : 'someone liked your rice',
+    comment:      (n) => n.rice_name ? `new comment on "${n.rice_name}"` : 'someone commented on your rice',
+    issue:        (n) => n.rice_name ? `issue opened on "${n.rice_name}"` : 'an issue was reported on your rice',
+    follow:       (_) => 'you have a new follower — check your profile!',
+    rice_deleted: (n) => n.rice_name ? `"${n.rice_name}" was removed from the gallery` : 'one of your rice was removed from the gallery',
+  };
 
   if (!loaded) return <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, padding:"20px 0" }}>loading...</div>;
   if (!notifs.length) return (
@@ -2888,24 +3035,42 @@ function NotificationsTab({ userId, onRead }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
       <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", fontFamily:C.mono, marginBottom:4 }}>// notifications</div>
-      {notifs.map(n => (
+      {notifs.map(n => {
+        const col = typeColor[n.type] || C.gray3;
+        const title = typeTitle[n.type] || '🔔 new notification';
+        const sub   = typeSub[n.type] ? typeSub[n.type](n) : '';
+        return (
         <div key={n.id} style={{
-          border:`1px solid ${n.read ? C.border : C.borderHi}`,
-          background: n.read ? C.bgDeep : C.bgDeep,
+          border:`1px solid ${n.read ? C.border : col+'88'}`,
+          borderLeft:`3px solid ${col}`,
+          background: n.read ? C.bgDeep : col+'0d',
           padding:"12px 14px",
-          opacity: n.read ? 0.65 : 1,
+          opacity: n.read ? 0.6 : 1,
           transition:"opacity .2s"
         }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:n.message?6:0 }}>
-            <span style={{ fontSize:13 }}>{typeIcon[n.type] || '🔔'}</span>
-            {n.rice_name && <span style={{ fontSize:9, color:typeColor[n.type]||C.gray3, fontFamily:C.mono, border:`1px solid ${(typeColor[n.type]||C.gray3)}44`, padding:"1px 7px" }}>// {n.rice_name}</span>}
-            <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginLeft:"auto" }}>
+          {/* header row: title + date */}
+          <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:4 }}>
+            <span style={{ fontSize:11, fontFamily:C.mono, fontWeight:700, color: n.read ? C.gray3 : col, letterSpacing:"0.01em" }}>
+              {title}
+            </span>
+            <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginLeft:"auto", whiteSpace:"nowrap" }}>
               {new Date(n.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
             </span>
           </div>
-          {n.message && <div style={{ fontSize:11, color:C.white, fontFamily:C.mono, lineHeight:1.6 }}>{n.message}</div>}
+          {/* sub-line */}
+          <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom: n.message ? 8 : 0 }}>
+            {sub}
+          </div>
+          {/* admin message (only for rice_deleted) */}
+          {n.message && (
+            <div style={{ fontSize:11, color:C.white, fontFamily:C.mono, lineHeight:1.7,
+              borderTop:`1px solid ${col}33`, paddingTop:8, marginTop:4 }}>
+              <span style={{ color:col, fontSize:9, fontStyle:"italic" }}>// admin note: </span>{n.message}
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -4531,6 +4696,27 @@ export default function App() {
       </div>
       <div style={{ position:"fixed", bottom:0, left:0, right:0, zIndex:200 }}>
         <Footer setPage={setPage}/>
+        <a
+          href="https://buymeacoffee.com/riceshare"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            position:"fixed", bottom:68, right:20, zIndex:9999,
+            display:"flex", alignItems:"center", gap:7,
+            background:"#FFDD00", color:"#000",
+            fontFamily:"'IBM Plex Mono','Fira Code','Courier New',monospace",
+            fontSize:11, fontWeight:700,
+            padding:"8px 14px", borderRadius:6,
+            textDecoration:"none",
+            boxShadow:"0 4px 16px rgba(0,0,0,0.35)",
+            transition:"opacity .15s, transform .15s",
+          }}
+          onMouseEnter={e=>{ e.currentTarget.style.opacity="0.9"; e.currentTarget.style.transform="translateY(-2px)"; }}
+          onMouseLeave={e=>{ e.currentTarget.style.opacity="1";   e.currentTarget.style.transform="translateY(0)"; }}
+        >
+          <img src="https://cdn.buymeacoffee.com/buttons/bmc-new-btn-logo.svg" alt="" style={{ width:16, height:16 }}/>
+          buy the team a coffee
+        </a>
       </div>
       <div className="content-area" style={{ position:"fixed", top:44, bottom:52, left:0, right:0, overflowY:"auto", background:C.bg }}>
         <PageShell key={page}>
