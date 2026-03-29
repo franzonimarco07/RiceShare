@@ -109,6 +109,7 @@ input::placeholder{color:#282828;} textarea::placeholder{color:#2e2e2e;}
   .rs-grid-1{grid-template-columns:1fr!important;}
   .rs-pad-mobile{padding:16px!important;}
   .rs-font-sm{font-size:11px!important;}
+  .content-area{bottom:100px!important;}
 }
 `;
 
@@ -789,12 +790,76 @@ function CommentsSection({ rice, currentUser }) {
   );
 }
 
+function EditRiceModal({ rice, onClose }) {
+  const [title, setTitle] = useState(rice.title||"");
+  const [desc,  setDesc]  = useState(rice.description||"");
+  const [tags,  setTags]  = useState((rice.tags||[]).join(", "));
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg]       = useState("");
+
+  const save = async () => {
+    setSaving(true);
+    const { supabase } = await import('../lib/supabase');
+    const newTags = tags.split(",").map(t=>t.trim().toLowerCase().replace(/^#+/,"")).filter(Boolean);
+    const { error } = await supabase.from('rice').update({
+      title: title.trim(), description: desc.trim(), tags: newTags,
+    }).eq('id', rice.id);
+    setSaving(false);
+    if (error) { setMsg("✗ error — check console"); return; }
+    setMsg("✓ saved! reload to see changes.");
+    setTimeout(onClose, 1600);
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.bgDeep, border:`1px solid ${C.borderHi}`, padding:28, maxWidth:520, width:"100%", fontFamily:C.mono, animation:"fadeUp .2s ease" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <div style={{ fontSize:13, color:C.fn, fontWeight:600 }}>✏ edit rice</div>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.gray2, cursor:"pointer", fontSize:18, lineHeight:1, padding:0 }}>✕</button>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <div>
+            <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:6 }}>// TITLE</div>
+            <input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80}
+              style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:12, padding:"8px 10px", outline:"none", boxSizing:"border-box" }}/>
+          </div>
+          <div>
+            <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:6 }}>// DESCRIPTION</div>
+            <textarea value={desc} onChange={e=>setDesc(e.target.value)} maxLength={1000} rows={5}
+              style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:11, padding:"8px 10px", resize:"vertical", outline:"none", boxSizing:"border-box" }}/>
+          </div>
+          <div>
+            <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:6 }}>// TAGS (comma separated)</div>
+            <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="minimal, catppuccin, bar..."
+              style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:11, padding:"8px 10px", outline:"none", boxSizing:"border-box" }}/>
+          </div>
+        </div>
+        {msg && <div style={{ marginTop:12, fontSize:11, color:msg.includes("✓")?C.fn:"#f87171", fontFamily:C.mono }}>{msg}</div>}
+        <div style={{ display:"flex", justifyContent:"flex-end", gap:10, marginTop:20 }}>
+          <button onClick={onClose} style={{ padding:"7px 18px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>cancel</button>
+          <button onClick={save} disabled={saving} style={{ padding:"7px 18px", border:`1px solid ${C.fn}66`, background:`${C.fn}11`, color:C.fn, cursor:"pointer", fontSize:10, fontFamily:C.mono, fontWeight:600, opacity:saving?0.6:1 }}>
+            {saving ? "saving..." : "save changes →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagClick }) {
   const mobile = useMobile();
   const [tab, setTab]       = useState("description");
   const [copied, setCopied] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const cmd = `curl -fsSL riceshare.dev/install/${rice.author}/${rice.slug} | bash`;
-  const copy = () => { navigator.clipboard?.writeText(cmd).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); };
+  const copy = () => {
+    navigator.clipboard?.writeText(cmd).catch(()=>{});
+    setCopied(true);
+    setTimeout(()=>setCopied(false),2000);
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.from('rice').update({ installs:(rice.installs||0)+1 }).eq('id',rice.id);
+    }).catch(()=>{});
+  };
 
   const script = [
     {k:"comment",v:`#!/usr/bin/env bash`},
@@ -821,7 +886,7 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
     <div>
       <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:14, overflowX:"auto" }}>
         {["description","script","files"].map(t=>(
-          <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:"7px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s", flexShrink:0 }}>{t}</button>
+          <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:"7px 16px", background:"none", borderTop:"none", borderLeft:"none", borderRight:"none", borderBottom:tab===t?`2px solid ${C.fn}`:"2px solid transparent", color:tab===t?C.fn:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s", flexShrink:0, fontWeight:tab===t?700:400 }}>{t}</button>
         ))}
       </div>
       {tab==="description" && (
@@ -877,7 +942,7 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
 
   /* ── DEPS COPY CARD (sidebar) ── */
   const DepsCopyCard = ({ deps, distro }) => {
-    const [copied, setCopied] = React.useState(false);
+    const [copied, setCopied] = useState(false);
     const mgr = distro && distro.toLowerCase().includes("arch") ? "paru -S" :
                  distro && distro.toLowerCase().includes("ubuntu") ? "apt install" :
                  distro && distro.toLowerCase().includes("fedora") ? "dnf install" :
@@ -910,6 +975,14 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
         <LikeButton rice={rice}/>
         <ShareButton rice={rice}/>
       </div>
+      {currentUser && (currentUser.username===rice.author||currentUser.firstName===rice.author) && (
+        <button onClick={()=>setEditOpen(true)}
+          style={{ width:"100%", padding:"7px", border:`1px solid ${C.fn}44`, background:"transparent", color:C.fn, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .15s" }}
+          onMouseEnter={e=>{e.currentTarget.style.background=`${C.fn}11`;e.currentTarget.style.borderColor=C.fn;}}
+          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor=`${C.fn}44`;}}>
+          ✏ edit rice
+        </button>
+      )}
       <div style={{ border:`1px solid ${C.border}`, padding:"14px 16px", background:C.bgDeep }}>
         <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:10 }}>// AUTHOR</div>
         <div style={{ fontSize:13, color:C.fn, fontFamily:C.mono, marginBottom:10 }}>@{rice.author}</div>
@@ -933,6 +1006,7 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
       <div style={{ display:"flex", justifyContent:"flex-end" }}>
         <ReportButton rice={rice} currentUser={currentUser}/>
       </div>
+      {editOpen && <EditRiceModal rice={rice} onClose={()=>setEditOpen(false)}/>}
     </div>
   );
 
@@ -1036,6 +1110,13 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
       <div style={{ marginTop:8, display:"flex", justifyContent:"flex-end" }}>
         <ReportButton rice={rice} currentUser={currentUser}/>
       </div>
+      {currentUser && (currentUser.username===rice.author||currentUser.firstName===rice.author) && (
+        <button onClick={()=>setEditOpen(true)}
+          style={{ marginTop:8, width:"100%", padding:"10px", border:`1px solid ${C.fn}44`, background:"transparent", color:C.fn, cursor:"pointer", fontSize:11, fontFamily:C.mono }}>
+          ✏ edit rice
+        </button>
+      )}
+      {editOpen && <EditRiceModal rice={rice} onClose={()=>setEditOpen(false)}/>}
     </div>
   );
 
@@ -1441,6 +1522,8 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
   const [msg, setMsg]           = useState("");
   const [deleteModal, setDeleteModal] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [histFilter, setHistFilter] = useState("all");
+  const [adminBadge, setAdminBadge] = useState("staff");
 
   const flash = (m) => { setMsg(m); setTimeout(()=>setMsg(""), 3000); };
 
@@ -1452,19 +1535,31 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
       supabase.from('reports').select('*, rice(*, users(username))').eq('status','open').order('created_at',{ascending:false}),
       supabase.from('reports').select('id,rice_id,reason,notes,action,status,resolved_at,resolved_by,reporter_id, rice(id,title,author_id)').neq('status','open').order('resolved_at',{ascending:false}).limit(100),
       supabase.from('users').select('*').order('created_at',{ascending:false}),
-      supabase.from('rice').select('id,installs,status'),
+      supabase.from('rice').select('id,installs,status,created_at'),
     ]);
     setPending(pend.data||[]);
     setReports(reps.data||[]);
     setHistory(hist.data||[]);
     setUsers(usrs.data||[]);
+    // ricava il badge dell'admin loggato
+    const selfUser = (usrs.data||[]).find(u => u.id === adminUser?.id);
+    setAdminBadge(selfUser?.badge || "staff");
     const rice = allRice.data||[];
+    // weekly chart (last 8 weeks)
+    const now8 = new Date();
+    const weeks = Array.from({length:8},(_,i)=>{
+      const start=new Date(now8); start.setDate(start.getDate()-7*(7-i)); start.setHours(0,0,0,0);
+      const end=new Date(start); end.setDate(end.getDate()+7);
+      const label=`w${8-i}`; return {start,end,label,total:0,approved:0};
+    });
+    rice.forEach(r=>{ if(!r.created_at) return; const d=new Date(r.created_at); const w=weeks.find(x=>d>=x.start&&d<x.end); if(w){w.total++;if(r.status==="approved")w.approved++;} });
     setStats({
       totalRice:    rice.length,
       approved:     rice.filter(r=>r.status==="approved").length,
       pendingCount: rice.filter(r=>r.status==="pending").length,
       totalInstalls: rice.reduce((a,r)=>a+(r.installs||0),0),
       totalUsers:   (usrs.data||[]).length,
+      weeklyChart:  weeks,
     });
     setLoading(false);
   };
@@ -1616,7 +1711,7 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
         {/* Tabs */}
         <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:24 }}>
           {TABS.map(t=>(
-            <button key={t} onClick={()=>setTab(t)} style={{ padding:"8px 18px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>
+            <button key={t} onClick={()=>setTab(t)} style={{ padding:"9px 20px", background:"none", borderTop:"none", borderLeft:"none", borderRight:"none", borderBottom:tab===t?`2px solid ${C.fn}`:"2px solid transparent", color:tab===t?C.fn:C.gray2, cursor:"pointer", fontSize:12, fontFamily:C.mono, marginBottom:-1, transition:"color .15s", fontWeight:tab===t?700:400 }}>
               {t}{t==="pending"&&pending.length>0?<span style={{ marginLeft:6, fontSize:9, background:C.string, color:"#111", padding:"1px 5px", borderRadius:8 }}>{pending.length}</span>:null}
               {t==="reports"&&reports.length>0?<span style={{ marginLeft:6, fontSize:9, background:"#c07070", color:"#111", padding:"1px 5px", borderRadius:8 }}>{reports.length}</span>:null}
             </button>
@@ -1710,39 +1805,67 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
                 </div>
               </div>
             )))}
-            {reportTab==="history" && (history.length===0 ? (
-              <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no resolved reports yet</div>
-            ) : history.map(r=>(
-              <div key={r.id} style={{ border:`1px solid ${C.border}`, background:C.bgCard, padding:"14px 16px", animation:"fadeIn .2s ease", opacity:0.85 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:6 }}>
-                  <div>
-                    <div style={{ fontSize:12, color:C.white, fontFamily:C.mono, marginBottom:3 }}>
-                      {r.action==="rice_deleted"
-                        ? <span style={{ color:"#c07070" }}>✕ rice deleted</span>
-                        : <span style={{ color:C.gray2 }}>↷ dismissed</span>
-                      }
-                      {" — "}
-                      {r.rice
-                        ? <span onClick={()=>r.rice.id&&onSelectRice&&onSelectRice({...r.rice})} style={{ cursor:r.rice.id?"pointer":"default", textDecoration:r.rice.id?"underline":"none", textDecorationColor:"#ffffff44", textUnderlineOffset:3 }}>{r.rice.title}</span>
-                        : <span style={{ color:C.gray3 }}>{r.rice_id}</span>
-                      }
+            {reportTab==="history" && (() => {
+              const ACTION_META = {
+                rice_deleted: { label:"x rice deleted", color:"#c07070", bg:"#c0707010", border:"#c0707040" },
+                dismissed:    { label:"/ dismissed",    color:C.gray2,   bg:C.bgCard,   border:C.border    },
+                warning:      { label:"! warning sent", color:"#f59e0b", bg:"#f59e0b10", border:"#f59e0b40" },
+                approved:     { label:"v approved",     color:"#34d399", bg:"#34d39910", border:"#34d39940" },
+              };
+              const actionCounts = history.reduce((acc,r)=>{ const a=r.action||"dismissed"; acc[a]=(acc[a]||0)+1; return acc; },{});
+              const filtered = histFilter==="all" ? history : history.filter(r=>(r.action||"dismissed")===histFilter);
+              return history.length===0 ? (
+                <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no resolved reports yet</div>
+              ) : (<>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:8, marginBottom:16 }}>
+                  {Object.entries(ACTION_META).filter(([k])=>actionCounts[k]).map(([k,m])=>(
+                    <div key={k} style={{ border:`1px solid ${m.border}`, background:m.bg, padding:"10px 14px" }}>
+                      <div style={{ fontSize:20, fontWeight:700, color:m.color, fontFamily:C.mono }}>{actionCounts[k]||0}</div>
+                      <div style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginTop:3 }}>{m.label}</div>
                     </div>
-                    <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, marginBottom:3 }}>
-                      <span style={{ color:C.string }}>reason: </span>{r.reason}
-                      {r.notes && <span style={{ color:C.gray3 }}> — {r.notes}</span>}
-                    </div>
-                    <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>
-                      reported by <span style={{ color:C.gray2 }}>@{users.find(u=>u.id===r.reporter_id)?.username||r.reporter_id?.slice(0,8)||"anon"}</span>
-                      {r.resolved_at && <>
-                        <span style={{ margin:"0 8px" }}>·</span>
-                        resolved {new Date(r.resolved_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                        {r.resolved_by && <> by <span style={{ color:C.gray2 }}>@{users.find(u=>u.id===r.resolved_by)?.username||"admin"}</span></>}
-                      </>}
-                    </div>
+                  ))}
+                  <div style={{ border:`1px solid ${C.border}`, background:C.bgDeep, padding:"10px 14px" }}>
+                    <div style={{ fontSize:20, fontWeight:700, color:C.fn, fontFamily:C.mono }}>{history.length}</div>
+                    <div style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginTop:3 }}>// total actions</div>
                   </div>
                 </div>
-              </div>
-            )))}
+                <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+                  {[["all","// all","#fb923c"],...Object.entries(ACTION_META).filter(([k])=>actionCounts[k]).map(([k,m])=>[k,m.label,m.color])].map(([val,label,col])=>(
+                    <button key={val} onClick={()=>setHistFilter(val)} style={{ padding:"3px 12px", border:`1px solid ${histFilter===val?col:C.border}`, background:histFilter===val?col+"22":"transparent", color:histFilter===val?col:C.gray3, fontSize:10, fontFamily:C.mono, cursor:"pointer" }}>
+                      {label}{val!=="all"&&actionCounts[val]?<span style={{ marginLeft:5, opacity:.7 }}>{actionCounts[val]}</span>:null}
+                    </button>
+                  ))}
+                </div>
+                {filtered.length===0 ? (
+                  <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no entries for this filter</div>
+                ) : filtered.map(r=>{
+                  const a = r.action||"dismissed";
+                  const m = ACTION_META[a]||ACTION_META.dismissed;
+                  return (
+                    <div key={r.id} style={{ border:`1px solid ${m.border}`, background:m.bg, padding:"14px 16px", marginBottom:8, animation:"fadeIn .2s ease" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
+                        <span style={{ fontSize:10, color:m.color, fontFamily:C.mono, fontWeight:700, border:`1px solid ${m.border}`, padding:"2px 8px" }}>{m.label}</span>
+                        {r.rice ? (
+                          <span onClick={()=>r.rice.id&&onSelectRice&&onSelectRice({...r.rice})} style={{ fontSize:12, color:C.white, fontFamily:C.mono, cursor:"pointer", textDecoration:"underline", textDecorationColor:"#ffffff44", textUnderlineOffset:3 }}>{r.rice.title}</span>
+                        ) : <span style={{ fontSize:12, color:C.gray3, fontFamily:C.mono }}>{r.rice_id||"_"}</span>}
+                      </div>
+                      <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, marginBottom:4 }}>
+                        <span style={{ color:C.string }}>reason: </span>{r.reason||<span style={{ color:C.gray3, fontStyle:"italic" }}>none</span>}
+                        {r.notes && <span style={{ color:C.gray3 }}> -- {r.notes}</span>}
+                      </div>
+                      <div style={{ display:"flex", gap:12, flexWrap:"wrap", fontSize:10, color:C.gray3, fontFamily:C.mono }}>
+                        <span>reported by <span style={{ color:C.gray2 }}>@{users.find(u=>u.id===r.reporter_id)?.username||r.reporter_id?.slice(0,8)||"anon"}</span></span>
+                        {r.resolved_at && <>
+                          <span>|</span>
+                          <span>resolved {new Date(r.resolved_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
+                          {r.resolved_by && <><span>|</span><span>by <span style={{ color:C.gray2 }}>@{users.find(u=>u.id===r.resolved_by)?.username||"admin"}</span></span></>}
+                        </>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>);
+            })()}
           </div>
           </div>
         )}
@@ -1761,25 +1884,41 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
                     <div style={{ fontSize:12, color:C.fn, fontFamily:C.mono, marginBottom:2, cursor:onSelectUser?"pointer":"default", textDecoration:onSelectUser?"underline":"none", textDecorationColor:"#ffffff33", textUnderlineOffset:3 }} onClick={()=>onSelectUser&&onSelectUser(u)}>@{u.username||"—"}</div>
                     <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>{u.email}</div>
                   </div>
-                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                    {/* Badge selector */}
-                    <select value={u.badge||"member"} onChange={e=>updateUser(u.id,"badge",e.target.value)}
-                      style={{ background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray1, padding:"3px 8px", fontSize:10, fontFamily:C.mono, cursor:"pointer", outline:"none" }}>
-                      {["member","trusted","senior","staff","founder","banned"].map(b=>(
-                        <option key={b} value={b}>{b}</option>
-                      ))}
-                    </select>
-                    {/* Trust level selector */}
-                    <select value={u.trust_level||0} onChange={e=>updateUser(u.id,"trust_level",parseInt(e.target.value))}
-                      style={{ background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray1, padding:"3px 8px", fontSize:10, fontFamily:C.mono, cursor:"pointer", outline:"none" }}>
-                      {[-1,0,1,2,3].map(l=>(
-                        <option key={l} value={l}>trust {l}</option>
-                      ))}
-                    </select>
-                    {u.badge!=="banned" && (
-                      <button onClick={()=>banUser(u.id)} style={{ padding:"3px 10px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:9, fontFamily:C.mono }}>ban</button>
-                    )}
-                  </div>
+                  {(() => {
+                    const isFounder = adminBadge === "founder";
+                    const targetIsProtected = u.badge === "founder" || u.badge === "staff";
+                    const canEdit = isFounder || !targetIsProtected;
+                    const badgeOptions = isFounder
+                      ? ["member","trusted","senior","staff","founder","banned"]
+                      : ["member","trusted","senior","banned"];
+                    if (!canEdit) return (
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{ fontSize:12, color:C.gray3, fontFamily:C.mono }}>🔒</span>
+                        <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, opacity:0.6 }}>protected</span>
+                      </div>
+                    );
+                    return (
+                      <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                        {/* Badge selector */}
+                        <select value={u.badge||"member"} onChange={e=>updateUser(u.id,"badge",e.target.value)}
+                          style={{ background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray1, padding:"3px 8px", fontSize:10, fontFamily:C.mono, cursor:"pointer", outline:"none" }}>
+                          {badgeOptions.map(b=>(
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                        {/* Trust level selector */}
+                        <select value={u.trust_level||0} onChange={e=>updateUser(u.id,"trust_level",parseInt(e.target.value))}
+                          style={{ background:C.bgDeep, border:`1px solid ${C.border}`, color:C.gray1, padding:"3px 8px", fontSize:10, fontFamily:C.mono, cursor:"pointer", outline:"none" }}>
+                          {[-1,0,1,2,3].map(l=>(
+                            <option key={l} value={l}>trust {l}</option>
+                          ))}
+                        </select>
+                        {u.badge!=="banned" && (
+                          <button onClick={()=>banUser(u.id)} style={{ padding:"3px 10px", border:`1px solid #a0585866`, background:"transparent", color:"#c07070", cursor:"pointer", fontSize:9, fontFamily:C.mono }}>ban</button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -1789,6 +1928,29 @@ function AdminPage({ onNav, onSelectRice, onSelectUser }) {
         {/* ── STATS ── */}
         {!loading && tab==="stats" && (
           <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"1fr 1fr", gap:16 }}>
+            {/* ── activity chart ── */}
+            {stats.weeklyChart && (
+              <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, overflow:"hidden", gridColumn:"1/-1", marginBottom:4 }}>
+                <div style={{ padding:"8px 16px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// UPLOAD ACTIVITY — last 8 weeks</div>
+                <div style={{ padding:"16px 16px 10px", display:"flex", alignItems:"flex-end", gap:8, height:110 }}>
+                  {stats.weeklyChart.map((w,i)=>{
+                    const max=Math.max(...stats.weeklyChart.map(x=>x.total),1);
+                    const pct=w.total/max;
+                    return (
+                      <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4, height:"100%" }}>
+                        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"flex-end", width:"100%" }}>
+                          <div title={`${w.total} rice, ${w.approved} approved`}
+                            style={{ height:`${Math.round(pct*72)}%`, minHeight:w.total>0?4:0, background:C.fn, opacity:0.75, width:"100%", transition:"height .4s ease", cursor:"default" }}/>
+                        </div>
+                        <div style={{ fontSize:8, color:C.gray3, fontFamily:C.mono }}>{w.label}</div>
+                        <div style={{ fontSize:8, color:w.total>0?C.white:C.gray3, fontFamily:C.mono, fontWeight:600 }}>{w.total}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ padding:"4px 16px 8px", fontSize:8, color:C.gray3, fontFamily:C.mono }}>hover a bar for details · orange = total uploads</div>
+              </div>
+            )}
             <div style={{ border:`1px solid ${C.border}`, background:C.bgCard, overflow:"hidden" }}>
               <div style={{ padding:"8px 16px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, letterSpacing:"0.08em" }}>// RICE</div>
               <Row label="total rice"    value={stats.totalRice}    />
@@ -1927,7 +2089,7 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
     if (feedTab === 'for-you' && !loading) loadForYou();
   }, [feedTab, loading]);
 
-  const wms = ["all","hyprland","sway","i3wm","bspwm","openbox"];
+  const wms = ["all","hyprland","sway","i3wm","bspwm","openbox","dwm","kde","gnome","xfce","awesome","qtile","mate","cinnamon","budgie","xmonad"];
   const mobile = useMobile();
   const filtered = (() => {
     const base = rices.filter(r => {
@@ -2043,7 +2205,7 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
       {/* ── FEED TABS ── */}
       <div style={{ padding:mobile?"0 14px":"0 32px", borderBottom:`1px solid ${C.border}`, background:C.bgDeep, display:"flex", alignItems:"center" }}>
         {[["explore","// explore"],["for-you","// for you"]].map(([t,label])=>(
-          <button key={t} className="tb" onClick={()=>setFeedTab(t)} style={{ padding:mobile?"10px 14px":"10px 18px", background:"none", border:"none", borderBottom:feedTab===t?`2px solid ${C.fn}`:"2px solid transparent", color:feedTab===t?C.white:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginBottom:-1, transition:"color .15s" }}>{label}</button>
+          <button key={t} className="tb" onClick={()=>setFeedTab(t)} style={{ padding:mobile?"10px 16px":"11px 22px", background:"none", borderTop:"none", borderLeft:"none", borderRight:"none", borderBottom:feedTab===t?`2px solid ${C.fn}`:"2px solid transparent", color:feedTab===t?C.fn:C.gray3, cursor:"pointer", fontSize:mobile?11:12, fontFamily:C.mono, fontWeight:feedTab===t?700:400, marginBottom:-1, transition:"color .15s, border-color .15s" }}>{label}</button>
         ))}
         {!user && feedTab==="for-you" && <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, marginLeft:"auto" }}>sign in to personalise</span>}
       </div>
@@ -2129,15 +2291,16 @@ function HomePage({ onSelect, onUpload, tagClick, onTagClickConsumed }) {
             <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, flexShrink:0, whiteSpace:"nowrap" }}>{filtered.length} results</span>
           </div>
           {/* Row 2: WM filter tabs with orange accent */}
-          <div style={{ padding:"0 32px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", background:C.bg }}>
+          <div style={{ padding:"0 32px", borderBottom:`1px solid ${C.border}`, display:"flex", alignItems:"center", background:C.bg, overflowX:"auto", gap:0 }}>
             {wms.map(f=>(
               <button key={f} className="tb" onClick={()=>setWmFilter(f)} style={{
-                padding:"8px 14px", background:"none", border:"none",
+                padding:"8px 14px", background:"none",
+                borderTop:"none", borderLeft:"none", borderRight:"none",
                 borderBottom:wmFilter===f?`2px solid ${C.fn}`:"2px solid transparent",
                 color:wmFilter===f?C.fn:C.gray2,
-                cursor:"pointer", fontSize:10, fontFamily:C.mono,
+                cursor:"pointer", fontSize:11, fontFamily:C.mono,
                 marginBottom:-1, transition:"color .15s, border-color .15s",
-                fontWeight:wmFilter===f?600:400,
+                fontWeight:wmFilter===f?700:400, whiteSpace:"nowrap", flexShrink:0
               }}>
                 {f==="all"?"all":f}
               </button>
@@ -2236,59 +2399,222 @@ function useMobile(breakpoint=640) {
   return mobile;
 }
 
-function Navbar({ page, setPage, isAdmin, navUnread }) {
+function Navbar({ page, setPage, isAdmin, navUnread, onSearch }) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchVal, setSearchVal] = useState("");
   const navRef = useRef(null);
   const isMobile = useContainerWidth(navRef, 680);
-  const NAV_LINKS = [["home","home"],["upload","upload"],["docs","docs"],["about","about"]];
+  const NAV_LINKS = [["home","home"],["upload","upload"],["leaderboard","ranks"],["docs","docs"],["about","about"]];
+
+  const navBtn = (active) => ({
+    padding:"0 16px", height:"100%", background:"none",
+    borderTop:"none", borderLeft:"none", borderRight:"none",
+    borderBottom: active ? `2px solid ${C.fn}` : "2px solid transparent",
+    color: active ? C.white : C.gray3,
+    cursor:"pointer", fontSize:12, fontFamily:C.mono,
+    fontWeight: active ? 700 : 400,
+    letterSpacing:"0.02em", transition:"color .15s, border-color .15s"
+  });
 
   return (
     <>
-      <nav ref={navRef} style={{ borderBottom:`1px solid ${C.border}`, position:"sticky", top:0, zIndex:200, background:"rgba(20,20,20,0.97)", backdropFilter:"blur(10px)" }}>
-        <div style={{ display:"flex", alignItems:"center", height:44 }}>
+      <nav ref={navRef} style={{ borderBottom:`1px solid ${C.border}`, position:"sticky", top:0, zIndex:200, background:"rgba(11,11,11,0.98)", backdropFilter:"blur(14px)" }}>
+        <div style={{ display:"flex", alignItems:"center", height:52 }}>
+
+          {/* ── Gutter dot */}
           {!isMobile && (
-            <div style={{ width:GUTTER, flexShrink:0, height:"100%", background:C.gutter, borderRight:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:14 }}>
-              <div style={{ width:5, height:5, borderRadius:"50%", background:C.fn, opacity:.6 }}/>
+            <div style={{ width:GUTTER, flexShrink:0, height:"100%", background:C.gutter, borderRight:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ width:7, height:7, borderRadius:"50%", background:C.fn }}/>
             </div>
           )}
-          <div style={{ flex:1, paddingLeft:isMobile?12:16, display:"flex", alignItems:"center", height:"100%" }}>
-            <button onClick={()=>{setPage("home");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontFamily:C.display, fontSize:isMobile?12:15, fontWeight:800, color:C.white, letterSpacing:"-0.02em", textTransform:"uppercase", padding:"0 12px 0 0", marginRight:8, borderRight:`1px solid ${C.border}`, height:"100%" }}>Riceshare</button>
-            {!isMobile && NAV_LINKS.map(([p,label])=>(
-              <button key={p} className="tb" onClick={()=>setPage(p)} style={{ padding:"0 12px", height:"100%", background:"none", border:"none", borderBottom:page===p?`1px solid ${C.white}`:"1px solid transparent", color:page===p?C.white:C.gray2, cursor:"pointer", fontSize:11, fontFamily:C.mono, transition:"color .15s" }}>{label}</button>
-            ))}
-            <div style={{ flex:1 }}/>
-            {!isMobile && (user ? (
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:16 }}>
-                {isAdmin && <button onClick={()=>setPage("admin")} style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:9, fontFamily:C.mono, padding:"2px 8px" }}>admin</button>}
-                <button onClick={()=>setPage("profiles")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:10, fontFamily:C.mono, color:C.fn, padding:0, display:"inline-flex", alignItems:"center", gap:4 }}>@{user?.username || user?.firstName || "user"}{navUnread>0&&<span style={{ width:6, height:6, borderRadius:"50%", background:"#f47244", display:"inline-block", marginBottom:1 }}/>}</button>
-                <button onClick={()=>signOut(()=>setPage("home"))} className="bg" style={{ padding:"4px 10px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>logout</button>
-              </div>
-            ) : (
-              <button className="bs" onClick={()=>window.location.href='/sign-in'} style={{ padding:"5px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, marginRight:16 }}>login</button>
-            ))}
-            {isMobile && (
-              <button onClick={()=>setMenuOpen(o=>!o)} style={{ background:"none", border:`1px solid ${C.border}`, color:C.gray2, cursor:"pointer", padding:"4px 10px", fontFamily:C.mono, fontSize:15, marginRight:10, lineHeight:1 }}>{menuOpen?"✕":"☰"}</button>
-            )}
+
+          {/* ── Logo */}
+          <div style={{ paddingLeft: isMobile?14:20, paddingRight:20, borderRight:`1px solid ${C.border}`, height:"100%", display:"flex", alignItems:"center", flexShrink:0 }}>
+            <button onClick={()=>{setPage("home");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:9, padding:0 }}>
+              <span style={{ width:8, height:8, borderRadius:"50%", background:C.fn, flexShrink:0 }}/>
+              <span style={{ fontFamily:C.display, fontSize:15, fontWeight:800, color:C.white, letterSpacing:"-0.03em", textTransform:"uppercase" }}>Riceshare</span>
+            </button>
           </div>
+
+          {/* ── Nav links (desktop) */}
+          {!isMobile && (
+            <div style={{ display:"flex", alignItems:"center", height:"100%", paddingLeft:4 }}>
+              {NAV_LINKS.map(([p,label])=>(
+                <button key={p} onClick={()=>setPage(p)}
+                  style={navBtn(page===p)}
+                  onMouseEnter={e=>{ if(page!==p) e.currentTarget.style.color=C.gray2; }}
+                  onMouseLeave={e=>{ if(page!==p) e.currentTarget.style.color=C.gray3; }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ flex:1 }}/>
+
+          {/* ── Animated search bar (desktop) */}
+          {!isMobile && (() => {
+            const searchExpanded = searchOpen || searchVal.length > 0;
+            return (
+              <div style={{ display:"flex", alignItems:"center", marginRight:10, position:"relative" }}>
+                <div style={{
+                  display:"flex", alignItems:"center", gap:0,
+                  height:30,
+                  width: searchExpanded ? 220 : 90,
+                  transition:"width 0.28s cubic-bezier(.4,0,.2,1), border-color 0.15s, box-shadow 0.15s",
+                  background: searchExpanded ? "#141414" : C.bgDeep,
+                  border:`1px solid ${searchExpanded ? C.fn+"77" : C.border}`,
+                  boxShadow: searchExpanded ? `0 0 0 2px ${C.fn}18` : "none",
+                  overflow:"hidden",
+                  cursor: searchExpanded ? "text" : "pointer",
+                }}>
+                  <span
+                    onClick={()=>{ if(!searchExpanded){ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); } }}
+                    style={{ fontSize:15, lineHeight:1, color: searchExpanded ? C.fn : C.gray3, paddingLeft:10, paddingRight:7, flexShrink:0, userSelect:"none", transition:"color .15s" }}>⌕</span>
+                  <input
+                    id="nb-search"
+                    value={searchVal}
+                    onChange={e=>setSearchVal(e.target.value)}
+                    onFocus={()=>setSearchOpen(true)}
+                    onBlur={()=>{ if(!searchVal) setSearchOpen(false); }}
+                    onKeyDown={e=>{
+                      if(e.key==="Enter" && searchVal.trim()){ onSearch(searchVal.trim()); setSearchOpen(false); setSearchVal(""); }
+                      if(e.key==="Escape"){ setSearchOpen(false); setSearchVal(""); e.target.blur(); }
+                    }}
+                    placeholder="search rice & users"
+                    style={{
+                      flex:1, background:"transparent", border:"none", outline:"none",
+                      color:C.white, fontFamily:C.mono, fontSize:11,
+                      padding:"0 8px 0 0", height:"100%",
+                      opacity: searchExpanded ? 1 : 0,
+                      transition:"opacity 0.2s",
+                      pointerEvents: searchExpanded ? "all" : "none",
+                    }}
+                  />
+                  {searchExpanded && searchVal && (
+                    <button onClick={()=>{ setSearchVal(""); setSearchOpen(false); }}
+                      style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:13, paddingRight:8, lineHeight:1, flexShrink:0 }}>✕</button>
+                  )}
+                  {!searchExpanded && (
+                    <span
+                      onClick={()=>{ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); }}
+                      style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, whiteSpace:"nowrap", paddingRight:10, cursor:"pointer", userSelect:"none", transition:"color .15s" }}>search</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Right section (desktop) */}
+          {!isMobile && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:16, paddingLeft:12, borderLeft:`1px solid ${C.border}`, height:"100%" }}>
+              {user ? (<>
+                {isAdmin && (
+                  <button onClick={()=>setPage("admin")}
+                    style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:9, fontFamily:C.mono, padding:"3px 9px", letterSpacing:"0.06em", display:"flex", alignItems:"center", gap:4, transition:"background .15s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background=C.string+"18"}
+                    onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                    <span>⚙</span> admin
+                  </button>
+                )}
+                <button onClick={()=>setPage("profiles")}
+                  style={{ background:"none", border:"none", cursor:"pointer", fontFamily:C.mono, fontSize:11, color:C.fn, padding:0, display:"inline-flex", alignItems:"center", gap:5, fontWeight:600, letterSpacing:"0.01em" }}>
+                  <span style={{ fontSize:9, color:C.gray3, fontWeight:400 }}>@</span>
+                  {user?.username || user?.firstName || "user"}
+                  {navUnread > 0 && (
+                    <span style={{ minWidth:17, height:17, borderRadius:9, background:"#f47244", color:"#000", fontSize:9, fontFamily:C.mono, fontWeight:700, display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0 4px", letterSpacing:0 }}>
+                      {navUnread > 9 ? "9+" : navUnread}
+                    </span>
+                  )}
+                </button>
+                <button onClick={()=>signOut(()=>setPage("home"))}
+                  style={{ background:"none", border:`1px solid ${C.border}`, color:C.gray3, cursor:"pointer", fontSize:10, fontFamily:C.mono, padding:"4px 11px", transition:"all .15s" }}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=C.borderHi;e.currentTarget.style.color=C.white;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.color=C.gray3;}}>
+                  ← exit
+                </button>
+              </>) : (
+                <button onClick={()=>window.location.href='/sign-in'}
+                  style={{ padding:"5px 16px", border:`1px solid ${C.fn}55`, background:`${C.fn}0f`, color:C.fn, cursor:"pointer", fontSize:10, fontFamily:C.mono, letterSpacing:"0.05em", transition:"all .15s" }}
+                  onMouseEnter={e=>{e.currentTarget.style.background=C.fn+"22";e.currentTarget.style.borderColor=C.fn+"99";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=C.fn+"0f";e.currentTarget.style.borderColor=C.fn+"55";}}>
+                  login →
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Mobile right */}
+          {isMobile && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginRight:12 }}>
+              {user && navUnread > 0 && (
+                <span style={{ minWidth:17, height:17, borderRadius:9, background:"#f47244", color:"#000", fontSize:9, fontFamily:C.mono, fontWeight:700, display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"0 4px" }}>
+                  {navUnread > 9 ? "9+" : navUnread}
+                </span>
+              )}
+              <button onClick={()=>setMenuOpen(o=>!o)}
+                style={{ background:"none", border:`1px solid ${C.border}`, color:C.gray2, cursor:"pointer", padding:"5px 11px", fontFamily:C.mono, fontSize:14, lineHeight:1 }}>
+                {menuOpen ? "✕" : "☰"}
+              </button>
+            </div>
+          )}
         </div>
       </nav>
+
+      {/* ── Mobile drawer */}
       {isMobile && menuOpen && (
-        <div style={{ position:"fixed", top:44, left:0, right:0, zIndex:199, background:"rgba(13,13,13,0.98)", borderBottom:`1px solid ${C.border}`, flexDirection:"column", padding:"8px 0", backdropFilter:"blur(10px)", display:"flex" }}>
-          {NAV_LINKS.map(([p,label])=>(
-            <button key={p} onClick={()=>{setPage(p);setMenuOpen(false);}} style={{ padding:"13px 20px", background:"none", border:"none", borderLeft:page===p?`2px solid ${C.white}`:"2px solid transparent", color:page===p?C.white:C.gray2, cursor:"pointer", fontSize:14, fontFamily:C.mono, textAlign:"left" }}>{label}</button>
-          ))}
-          <div style={{ height:1, background:C.border, margin:"8px 0" }}/>
-          {user ? (
-            <div style={{ display:"flex", gap:10, padding:"8px 20px", flexWrap:"wrap" }}>
-              {isAdmin && <button onClick={()=>{setPage("admin");setMenuOpen(false);}} style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:11, fontFamily:C.mono, padding:"4px 10px" }}>admin</button>}
-              <button onClick={()=>{setPage("profiles");setMenuOpen(false);}} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn, display:"inline-flex", alignItems:"center", gap:5 }}>@{user?.username || user?.firstName || "user"}{navUnread>0&&<span style={{ width:7, height:7, borderRadius:"50%", background:"#f47244", display:"inline-block" }}/>}</button>
-              <button onClick={()=>signOut(()=>setPage("home"))} style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono }}>logout</button>
-            </div>
-          ) : (
-            <button onClick={()=>{window.location.href='/sign-in';setMenuOpen(false);}} style={{ margin:"4px 20px 12px", padding:"11px", border:`1px solid ${C.borderHi}`, background:"transparent", color:C.white, cursor:"pointer", fontSize:13, fontFamily:C.mono }}>login →</button>
-          )}
+        <div style={{ position:"fixed", top:52, left:0, right:0, zIndex:199, background:"rgba(9,9,9,0.99)", borderBottom:`1px solid ${C.border}`, display:"flex", flexDirection:"column", backdropFilter:"blur(14px)" }}>
+
+          {/* Nav links */}
+          <div style={{ padding:"6px 0" }}>
+            {NAV_LINKS.map(([p,label])=>(
+              <button key={p} onClick={()=>{setPage(p);setMenuOpen(false);}}
+                style={{ display:"flex", alignItems:"center", gap:12, width:"100%", padding:"13px 20px", background:"none", border:"none", borderLeft:page===p?`2px solid ${C.fn}`:"2px solid transparent", color:page===p?C.white:C.gray2, cursor:"pointer", fontSize:13, fontFamily:C.mono, textAlign:"left" }}>
+                {page===p && <span style={{ width:4, height:4, borderRadius:"50%", background:C.fn, flexShrink:0 }}/>}
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ height:1, background:C.border }}/>
+
+          {/* Search */}
+          <button onClick={()=>{setPage("search");setMenuOpen(false);}}
+            style={{ display:"flex", alignItems:"center", gap:10, padding:"13px 20px", background:"none", border:"none", color:C.gray3, cursor:"pointer", fontFamily:C.mono, fontSize:12, textAlign:"left" }}>
+            <span style={{ fontSize:15 }}>⌕</span> search rice & users
+          </button>
+
+          <div style={{ height:1, background:C.border }}/>
+
+          {/* User section */}
+          <div style={{ padding:"14px 20px", display:"flex", flexDirection:"column", gap:10 }}>
+            {user ? (<>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                <button onClick={()=>{setPage("profiles");setMenuOpen(false);}}
+                  style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, fontFamily:C.mono, color:C.fn, fontWeight:600, display:"inline-flex", alignItems:"center", gap:5, padding:0 }}>
+                  @{user?.username || user?.firstName || "user"}
+                </button>
+                {isAdmin && (
+                  <button onClick={()=>{setPage("admin");setMenuOpen(false);}}
+                    style={{ background:"none", border:`1px solid ${C.string}44`, color:C.string, cursor:"pointer", fontSize:10, fontFamily:C.mono, padding:"3px 9px", display:"flex", alignItems:"center", gap:3 }}>
+                    <span>⚙</span> admin
+                  </button>
+                )}
+              </div>
+              <button onClick={()=>signOut(()=>setPage("home"))}
+                style={{ alignSelf:"flex-start", padding:"8px 16px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", fontSize:12, fontFamily:C.mono }}>
+                ← exit
+              </button>
+            </>) : (
+              <button onClick={()=>{window.location.href='/sign-in';setMenuOpen(false);}}
+                style={{ padding:"12px", border:`1px solid ${C.fn}55`, background:`${C.fn}0f`, color:C.fn, cursor:"pointer", fontSize:13, fontFamily:C.mono }}>
+                login →
+              </button>
+            )}
+          </div>
         </div>
       )}
     </>
@@ -2425,7 +2751,7 @@ function DocsPage() {
           <P>Riceshare exposes a public REST API. All endpoints are read-only and require no authentication.</P>
           <Block><div style={{color:C.gray3,fontStyle:"italic",marginBottom:4}}>// base url</div><code style={{color:C.string}}>https://riceshare.dev/api/v1</code></Block>
           <div style={{marginBottom:20}}>
-            <ApiRow method="GET" path="/rice"                    desc="lista tutti i rice — params: sort, wm, distro, limit"/>
+            <ApiRow method="GET" path="/rice"                    desc="list all rice — params: sort, wm, distro, limit"/>
             <ApiRow method="GET" path="/rice/:author/:slug"      desc="single rice detail"/>
             <ApiRow method="GET" path="/rice/:author/:slug/meta" desc="meta.json del rice"/>
             <ApiRow method="GET" path="/install/:author/:slug"   desc="bash installation script"/>
@@ -3517,7 +3843,7 @@ function ProfilesPage({ onNav, onSelectRice, onClearNotifs }) {
       <div style={{ padding:"14px 14px 32px" }}>
     <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:mobile?16:24 }}>
       {[["rice","rice"],["liked","liked"],["issues","issues"],["notifs","notifs"],["settings","settings"]].map(([t,label])=>(
-        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"8px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:mobile?10:11, fontFamily:C.mono, marginBottom:-1, display:"flex", alignItems:"center", gap:4 }}>
+        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"9px 18px", background:"none", borderTop:"none", borderLeft:"none", borderRight:"none", borderBottom:tab===t?`2px solid ${C.fn}`:"2px solid transparent", color:tab===t?C.fn:C.gray2, cursor:"pointer", fontSize:mobile?10:12, fontFamily:C.mono, marginBottom:-1, display:"flex", alignItems:"center", gap:4, fontWeight:tab===t?700:400 }}>
           {label}
           {t==="notifs"&&unreadNotifCount>0&&<span style={{ background:"#f47244", color:"#fff", fontSize:7, padding:"1px 4px", lineHeight:1.4, borderRadius:2 }}>{unreadNotifCount}</span>}
         </button>
@@ -3616,7 +3942,7 @@ function ProfilesPage({ onNav, onSelectRice, onClearNotifs }) {
 
     <div style={{ display:"flex", borderBottom:`1px solid ${C.border}`, marginBottom:mobile?16:24 }}>
       {[["rice","rice"],["liked","liked"],["issues","issues"],["notifs","notifs"],["settings","settings"]].map(([t,label])=>(
-        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"8px 16px", background:"none", border:"none", borderBottom:tab===t?`1px solid ${C.white}`:"1px solid transparent", color:tab===t?C.white:C.gray2, cursor:"pointer", fontSize:mobile?10:11, fontFamily:C.mono, marginBottom:-1, display:"flex", alignItems:"center", gap:4 }}>
+        <button key={t} className="tb" onClick={()=>setTab(t)} style={{ padding:mobile?"8px 14px":"9px 18px", background:"none", borderTop:"none", borderLeft:"none", borderRight:"none", borderBottom:tab===t?`2px solid ${C.fn}`:"2px solid transparent", color:tab===t?C.fn:C.gray2, cursor:"pointer", fontSize:mobile?10:12, fontFamily:C.mono, marginBottom:-1, display:"flex", alignItems:"center", gap:4, fontWeight:tab===t?700:400 }}>
           {label}
           {t==="notifs"&&unreadNotifCount>0&&<span style={{ background:"#f47244", color:"#fff", fontSize:7, padding:"1px 4px", lineHeight:1.4, borderRadius:2 }}>{unreadNotifCount}</span>}
         </button>
@@ -3812,6 +4138,8 @@ function Footer({ setPage }) {
           </div>
           <div style={{ display:"flex", gap:20, alignItems:"center", flexWrap:"wrap" }}>
             <Link label="docs"      page="docs"/>
+            <Link label="leaderboard" page="leaderboard"/>
+            <Link label="leaderboard" page="leaderboard"/>
             <Link label="discord"   href="https://discord.gg/riceshare"/>
             <Link label="instagram" href="#" />
             <span style={{ width:1, height:12, background:C.border }}/>
@@ -4235,7 +4563,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
                 <input value={rice.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. catppuccin-mocha-hypr" style={inputStyle}
                   onFocus={e=>e.target.style.borderColor=C.white} onBlur={e=>e.target.style.borderColor=C.border}/>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginTop:4, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>usa un nome descrittivo e unico — verrà usato nell'URL di installazione. consigliato: tema-wm (es. catppuccin-hypr, nord-i3).
+                  <span style={{color:"#242424"}}>// </span>Use a descriptive and unique name—it will be used in the installation URL. Recommended: tema-wm (es. catppuccin-hypr, nord-i3).
                 </div>
               </div>
               <div>
@@ -4254,7 +4582,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
               <div>
                 <span style={labelStyle}>TAGS</span>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>i tag aiutano gli utenti a trovare il tuo rice nella ricerca. premi invio o spazio per aggiungere. max 10.
+                  <span style={{color:"#242424"}}>// </span>Tags help users find your rice in search. Press enter or space to add. Max 10.
                 </div>
                 <div style={{ display:"flex", gap:8, marginBottom:8 }}>
                   <input
@@ -4316,14 +4644,14 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
               <div>
                 <span style={labelStyle}>WINDOW MANAGER / DE *</span>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>il WM per cui è ottimizzato il rice. required field — definisce la categoria nella gallery.
+                  <span style={{color:"#242424"}}>// </span>the WM for which the rice is optimized. required field — defines the category in the gallery.
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{WMS.map(w=><Chip key={w} label={w} active={rice.wm===w} onClick={()=>set("wm",w)}/>)}</div>
               </div>
               <div>
                 <span style={labelStyle}>COMPATIBLE DISTROS</span>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>seleziona tutte le distro su cui hai testato il rice. aiuta gli utenti a capire se funzionerà sul loro system.
+                  <span style={{color:"#242424"}}>// </span>Select all the distros you've tested Rice on. This helps users determine if it will work on their system.
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>{DISTROS.map(d=><Chip key={d} label={d} active={rice.distros.includes(d)} onClick={()=>set("distros",rice.distros.includes(d)?rice.distros.filter(x=>x!==d):[...rice.distros,d])}/>)}</div>
               </div>
@@ -4331,14 +4659,14 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
                 <div>
                   <span style={labelStyle}>TERMINAL</span>
                   <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                    <span style={{color:"#242424"}}>// </span>il terminale incluso nella tua config.
+                    <span style={{color:"#242424"}}>// </span>the terminal included in your config.
                   </div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{TERMINALS.map(t=><Chip key={t} label={t} active={rice.terminal===t} onClick={()=>set("terminal",t)}/>)}</div>
                 </div>
                 <div>
                   <span style={labelStyle}>SHELL</span>
                   <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                    <span style={{color:"#242424"}}>// </span>la shell usata nei dotfiles (zshrc, config.fish, ecc.).
+                    <span style={{color:"#242424"}}>// </span>the shell used in dotfiles (zshrc, config.fish, ecc.).
                   </div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>{SHELLS.map(s=><Chip key={s} label={s} active={rice.shell===s} onClick={()=>set("shell",s)}/>)}</div>
                 </div>
@@ -4351,7 +4679,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
               <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// screenshots and images</div>
               <div style={{ padding:"10px 14px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9 }}>
                 <div style={{marginBottom:4}}><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>upload at least one screenshot of your desktop — it's the first thing users will see.</div>
-                <div><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>la <span style={{color:C.string}}>★ cover</span> apparirà come anteprima nella gallery. i colori della palette vengono estratti automaticamente dall'immagine.</div>
+                <div><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>the <span style={{color:C.string}}>★ cover</span> It will appear as a preview in the gallery. The palette colors are automatically extracted from the image.</div>
               </div>
 
               {/* Upload diretto */}
@@ -4377,7 +4705,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
               <div>
                 <span style={labelStyle}>OR PASTE URL</span>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, fontStyle:"italic", marginBottom:8, lineHeight:1.7 }}>
-                  <span style={{color:"#242424"}}>// </span>puoi usare link diretti da imgur, catbox.moe, i.redd.it o qualsiasi host di images. assicurati che il link finisca con .png, .jpg o .webp.
+                  <span style={{color:"#242424"}}>// </span>You can use direct links from imgur, catbox.moe, i.redd.it, or any image host. Make sure the link ends in .png, .jpg, or .webp.
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <input value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
@@ -4483,7 +4811,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
             <div style={{ display:"flex", flexDirection:"column", gap:14, animation:"fadeIn .2s ease" }}>
               <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// components included in this rice</div>
               <div style={{ padding:"10px 14px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9, marginBottom:4 }}>
-                <span style={{color:C.gray3,fontStyle:"italic"}}>// </span>indica quali components sono inclusi nel tuo rice. queste informazioni aiutano gli utenti a capire cosa installeranno prima di procedere.
+                <span style={{color:C.gray3,fontStyle:"italic"}}>// </span>Indicates which components are included in your rice. This information helps users understand what they will be installing before proceeding.
               </div>
               {Object.entries({ waybar:"Waybar — status bar", rofi:"Rofi / Wofi — launcher", dunst:"Dunst — notifications", wallpaper:"Wallpaper", fonts:"Custom fonts", neovim:"Neovim config" }).map(([k,label])=>(
                 <SToggle key={k} label={label} checked={rice.components[k]} onChange={v=>setC(k,v)}/>
@@ -4495,7 +4823,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
             <div style={{ display:"flex", flexDirection:"column", gap:16, animation:"fadeIn .2s ease" }}>
               <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// dependencies to install</div>
               <div style={{ padding:"10px 14px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9, marginBottom:4 }}>
-                <span style={{color:C.gray3,fontStyle:"italic"}}>// </span>lista dei packages che lo script di installazione installerà automaticamente. usa i nomi esatti del package manager (es. <span style={{color:C.fn}}>hyprland</span>, <span style={{color:C.fn}}>waybar</span>, <span style={{color:C.fn}}>nerd-fonts</span>).
+                <span style={{color:C.gray3,fontStyle:"italic"}}>// </span>List of packages that the installation script will automatically install. Use the exact names from the package manager. (es. <span style={{color:C.fn}}>hyprland</span>, <span style={{color:C.fn}}>waybar</span>, <span style={{color:C.fn}}>nerd-fonts</span>).
               </div>
               <div style={{ display:"flex", gap:8 }}>
                 <input value={depInput} onChange={e=>setDepInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addDep(depInput.trim())} placeholder="package name..."
@@ -4519,7 +4847,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
               <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// upload rice filess</div>
               <div style={{ padding:"10px 14px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9, marginBottom:4 }}>
                 <div style={{marginBottom:4}}><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>upload your dotfiles — config folders, shell rc files, wallpaper, etc.</div>
-                <div><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>lo script <span style={{color:C.fn}}>install.sh</span> script and <span style={{color:C.fn}}>meta.json</span> files are generated automatically. no need to include them.</div>
+                <div><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>The <span style={{color:C.fn}}>install.sh</span> script and <span style={{color:C.fn}}>meta.json</span> files are generated automatically. no need to include them.</div>
               </div>
               <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);addFiles(e.dataTransfer.files);}} onClick={()=>filesRef.current?.click()}
                 style={{ border:`1px dashed ${dragging?C.white:C.border}`, padding:"36px 24px", textAlign:"center", cursor:"pointer", background:dragging?"#ffffff06":"transparent", transition:"all .2s" }}>
@@ -4569,6 +4897,231 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
 }
 
 /* ── APP ─────────────────────────────────────────────────────────── */
+/* ── MOBILE BOTTOM NAV ───────────────────────────────────────────── */
+function MobileBottomNav({ page, setPage, isLoggedIn }) {
+  const isMobile = useMobile();
+  if (!isMobile) return null;
+  const items = [
+    { id:"home",     icon:"⌂", label:"home" },
+    { id:"search",   icon:"⌕", label:"search" },
+    { id:"upload",   icon:"↑", label:"upload" },
+    { id:"leaderboard", icon:"⊞", label:"ranks" },
+  ];
+  return (
+    <div style={{ position:"fixed", bottom:52, left:0, right:0, zIndex:198, height:48, background:"rgba(12,12,12,0.97)", borderTop:`1px solid ${C.border}`, display:"flex", backdropFilter:"blur(10px)" }}>
+      {items.map(item=>{
+        const active = page===item.id;
+        return (
+          <button key={item.id} onClick={()=>setPage(item.id)}
+            style={{ flex:1, height:"100%", background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, color:active?C.fn:C.gray3, transition:"color .15s", borderRight:`1px solid ${C.border}` }}>
+            <span style={{ fontSize:16, lineHeight:1 }}>{item.icon}</span>
+            <span style={{ fontSize:8, fontFamily:C.mono, letterSpacing:"0.05em" }}>{item.label}</span>
+          </button>
+        );
+      })}
+      {isLoggedIn ? (
+        <button onClick={()=>setPage("profiles")}
+          style={{ flex:1, height:"100%", background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, color:page==="profiles"?C.fn:C.gray3, transition:"color .15s" }}>
+          <span style={{ fontSize:16, lineHeight:1 }}>◉</span>
+          <span style={{ fontSize:8, fontFamily:C.mono }}>profile</span>
+        </button>
+      ) : (
+        <button onClick={()=>window.location.href='/sign-in'}
+          style={{ flex:1, height:"100%", background:"none", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, color:C.gray3 }}>
+          <span style={{ fontSize:16, lineHeight:1 }}>→</span>
+          <span style={{ fontSize:8, fontFamily:C.mono }}>login</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── LEADERBOARD PAGE ─────────────────────────────────────────────── */
+function LeaderboardPage({ onNav, onSelectUser }) {
+  const mobile = useMobile();
+  const [sortBy, setSortBy] = useState("installs");
+  const [authors, setAuthors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    import('../lib/supabase').then(async ({ supabase }) => {
+      const { data } = await supabase
+        .from('rice')
+        .select('author_id, installs, users(username)')
+        .eq('status','approved');
+      const map = {};
+      (data||[]).forEach(r=>{
+        const u = r.users?.username || r.author_id;
+        if (!map[u]) map[u] = { username:u, installs:0, rice:0 };
+        map[u].installs += r.installs||0;
+        map[u].rice++;
+      });
+      setAuthors(Object.values(map));
+      setLoading(false);
+    });
+  },[]);
+
+  const sorted = [...authors].sort((a,b)=> sortBy==="rice" ? b.rice-a.rice : b.installs-a.installs);
+  const medals = ["①","②","③"];
+
+  return (
+    <div style={{ padding:mobile?"14px":"28px 32px 48px", animation:"fadeIn .2s ease" }}>
+      <div style={{ maxWidth:720, margin:"0 auto" }}>
+        <div style={{ fontSize:10, color:C.kw, fontStyle:"italic", fontFamily:C.mono, marginBottom:6 }}>// leaderboard</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:24, flexWrap:"wrap", gap:10 }}>
+          <div style={{ fontFamily:C.display, fontSize:"clamp(20px,3vw,32px)", fontWeight:900, color:C.white, letterSpacing:"-0.02em" }}>Top Authors</div>
+          <div style={{ display:"flex", gap:0, border:`1px solid ${C.border}` }}>
+            {[["installs","↓ installs"],["rice","⊞ rice count"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setSortBy(k)}
+                style={{ padding:"5px 14px", background:sortBy===k?C.fn:"transparent", border:"none", borderRight:k==="installs"?`1px solid ${C.border}`:"none", color:sortBy===k?"#111":C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, transition:"all .15s" }}>{l}</button>
+            ))}
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ color:C.gray3, fontFamily:C.mono, fontSize:12, fontStyle:"italic" }}>// loading...</div>
+        ) : (
+          <div style={{ border:`1px solid ${C.border}` }}>
+            {sorted.slice(0,25).map((a,i)=>(
+              <div key={a.username}
+                onClick={()=>onSelectUser&&onSelectUser(a.username)}
+                style={{ display:"flex", alignItems:"center", gap:14, padding:"13px 16px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", transition:"background .12s", background:"transparent" }}
+                onMouseEnter={e=>e.currentTarget.style.background=C.bgCard}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+              >
+                <span style={{ fontSize:i<3?18:12, fontFamily:C.mono, fontWeight:700, minWidth:26, textAlign:"center",
+                  color:i===0?"#f59e0b":i===1?"#94a3b8":i===2?"#b45309":C.gray3 }}>
+                  {i<3?medals[i]:i+1}
+                </span>
+                <span style={{ flex:1, fontSize:13, fontFamily:C.mono, color:C.fn }}>@{a.username}</span>
+                <div style={{ display:"flex", gap:20, textAlign:"right" }}>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:700, color:C.white, fontFamily:C.mono }}>{fmt(a.installs)}</div>
+                    <div style={{ fontSize:9, color:C.gray3 }}>installs</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:14, fontWeight:700, color:C.kw, fontFamily:C.mono }}>{a.rice}</div>
+                    <div style={{ fontSize:9, color:C.gray3 }}>rice</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {sorted.length===0 && (
+              <div style={{ padding:"24px 16px", fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no data</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── SEARCH PAGE ──────────────────────────────────────────────────── */
+function SearchPage({ onNav, onSelectRice, onSelectUser, initialQuery="" }) {
+  const mobile = useMobile();
+  const [query, setQuery]           = useState(initialQuery);
+  const [riceResults, setRiceResults] = useState([]);
+  const [userResults, setUserResults] = useState([]);
+  const [searching, setSearching]   = useState(false);
+  const debRef = useRef(null);
+
+  useEffect(() => { if (initialQuery) runSearch(initialQuery); }, []);
+
+  const runSearch = (q) => {
+    if (!q.trim()) { setRiceResults([]); setUserResults([]); setSearching(false); return; }
+    setSearching(true);
+    clearTimeout(debRef.current);
+    debRef.current = setTimeout(async ()=>{
+      const { supabase } = await import('../lib/supabase');
+      const [rRes, uRes] = await Promise.all([
+        supabase.from('rice').select('id,title,author_id,cover_url,wm,installs,users(username)')
+          .eq('status','approved').ilike('title',`%${q}%`).limit(8),
+        supabase.from('users').select('id,username,badge')
+          .ilike('username',`%${q}%`).limit(6),
+      ]);
+      setRiceResults(rRes.data||[]);
+      setUserResults(uRes.data||[]);
+      setSearching(false);
+    }, 280);
+  };
+
+  const inputRef = useRef(null);
+  useEffect(()=>{ setTimeout(()=>inputRef.current?.focus(),100); },[]);
+
+  return (
+    <div style={{ padding:mobile?"14px":"28px 32px 48px", animation:"fadeIn .2s ease" }}>
+      <div style={{ maxWidth:720, margin:"0 auto" }}>
+        <div style={{ fontSize:10, color:C.string, fontStyle:"italic", fontFamily:C.mono, marginBottom:6 }}>// global search</div>
+        <div style={{ fontFamily:C.display, fontSize:"clamp(18px,3vw,30px)", fontWeight:900, color:C.white, letterSpacing:"-0.02em", marginBottom:20 }}>Search</div>
+
+        <div style={{ position:"relative", marginBottom:24 }}>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e=>{setQuery(e.target.value);runSearch(e.target.value);}}
+            placeholder="search rice titles, tags, authors..."
+            style={{ width:"100%", background:C.bgCard, border:`1px solid ${C.borderHi}`, color:C.white, fontFamily:C.mono, fontSize:14, padding:"12px 44px 12px 16px", outline:"none", boxSizing:"border-box" }}
+          />
+          <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", color:C.gray3, fontSize:14, pointerEvents:"none" }}>
+            {searching?"...":"⌕"}
+          </span>
+        </div>
+
+        {riceResults.length > 0 && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", fontFamily:C.mono, marginBottom:8 }}>// RICE ({riceResults.length})</div>
+            <div style={{ border:`1px solid ${C.border}` }}>
+              {riceResults.map(r=>(
+                <div key={r.id} onClick={()=>onSelectRice&&onSelectRice(r)}
+                  style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", transition:"background .12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background=C.bgCard}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                >
+                  {r.cover_url && <img src={r.cover_url} alt="" style={{ width:52, height:34, objectFit:"cover", flexShrink:0, border:`1px solid ${C.border}` }}/>}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontFamily:C.mono, color:C.white, fontWeight:500 }}>{r.title}</div>
+                    <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono }}>@{r.users?.username||r.author_id} · {r.wm}</div>
+                  </div>
+                  <span style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, flexShrink:0 }}>↓{fmt(r.installs||0)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {userResults.length > 0 && (
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", fontFamily:C.mono, marginBottom:8 }}>// AUTHORS ({userResults.length})</div>
+            <div style={{ border:`1px solid ${C.border}` }}>
+              {userResults.map(u=>(
+                <div key={u.id} onClick={()=>onSelectUser&&onSelectUser(u.username)}
+                  style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderBottom:`1px solid ${C.border}`, cursor:"pointer", transition:"background .12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background=C.bgCard}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                >
+                  <span style={{ flex:1, fontSize:13, fontFamily:C.mono, color:C.fn }}>@{u.username}</span>
+                  {u.badge && <span style={{ fontSize:9, fontFamily:C.mono, color:C.gray3, border:`1px solid ${C.border}`, padding:"1px 6px" }}>{u.badge}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!searching && query.length>1 && riceResults.length===0 && userResults.length===0 && (
+          <div style={{ fontSize:12, color:C.gray3, fontFamily:C.mono, fontStyle:"italic" }}>// no results for "{query}"</div>
+        )}
+        {!query && (
+          <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, lineHeight:2.2, fontStyle:"italic" }}>
+            // type to search rice by title<br/>
+            // authors matched by username<br/>
+            // click a result to open it →
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPageRaw]            = useState("home");
   const [selected, setSelected]       = useState(null);
@@ -4629,6 +5182,7 @@ export default function App() {
   const [userBadge,  setUserBadge]  = useState("member");
   const [navUnread,  setNavUnread]  = useState(0);
   const [tagClick,   setTagClick]   = useState(null);
+  const [navSearchQuery, setNavSearchQuery] = useState("");
   useEffect(() => {
     if (!user) return;
     import('../lib/supabase').then(({ supabase }) => {
@@ -4692,7 +5246,7 @@ export default function App() {
     <>
       <style>{GS}</style>
       <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:200 }}>
-        <Navbar page={page} setPage={setPage} isAdmin={userBadge==="founder"||userBadge==="staff"} navUnread={navUnread}/>
+        <Navbar page={page} setPage={setPage} isAdmin={userBadge==="founder"||userBadge==="staff"} navUnread={navUnread} onSearch={q=>{setNavSearchQuery(q);setPage("search");scrollTop();}}/>
       </div>
       <div style={{ position:"fixed", bottom:0, left:0, right:0, zIndex:200 }}>
         <Footer setPage={setPage}/>
@@ -4718,7 +5272,8 @@ export default function App() {
           buy the team a coffee
         </a>
       </div>
-      <div className="content-area" style={{ position:"fixed", top:44, bottom:52, left:0, right:0, overflowY:"auto", background:C.bg }}>
+      <MobileBottomNav page={page} setPage={setPage} isLoggedIn={isLoggedIn}/>
+      <div className="content-area" style={{ position:"fixed", top:52, bottom:52, left:0, right:0, overflowY:"auto", background:C.bg }}>
         <PageShell key={page}>
           {clerkLoaded && page==="home"       && <HomePage onSelect={go} onUpload={()=>{setPage("upload");scrollTop();}} tagClick={tagClick} onTagClickConsumed={()=>setTagClick(null)}/>}
           {page==="detail"     && selected && <DetailPage rice={selected} onBack={back} currentUser={user} userBadge={userBadge} onTagClick={t=>{setTagClick(t);back();}} onProfiles={()=>{
@@ -4734,6 +5289,8 @@ export default function App() {
           {clerkLoaded && page==="profiles"    && <ProfilesPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}} onClearNotifs={()=>setNavUnread(0)}/>}
           {clerkLoaded && page==="pubprofiles" && <PublicProfilesPage author={profilesAuthor} onBack={()=>{setPage(selected?"detail":"home");scrollTop();}} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}}/>}
           {page==="admin"       && (userBadge==="founder"||userBadge==="staff") && <AdminPage onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail");scrollTop();}} onSelectUser={u=>{setProfilesAuthor(u.username||u.clerk_id);setPage("pubprofiles");scrollTop();}}/>}
+          {page==="leaderboard" && <LeaderboardPage onNav={setPage} onSelectUser={u=>{setProfilesAuthor(u);setPage("pubprofiles");scrollTop();}}/>}
+          {page==="search"      && <SearchPage initialQuery={navSearchQuery} onNav={setPage} onSelectRice={r=>{setSelected(r);setPage("detail",r);scrollTop();}} onSelectUser={u=>{setProfilesAuthor(u);setPage("pubprofiles");scrollTop();}}/>}
         </PageShell>
       </div>
     </>
