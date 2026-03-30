@@ -791,54 +791,159 @@ function CommentsSection({ rice, currentUser }) {
 }
 
 function EditRiceModal({ rice, onClose }) {
-  const [title, setTitle] = useState(rice.title||"");
-  const [desc,  setDesc]  = useState(rice.description||"");
-  const [tags,  setTags]  = useState((rice.tags||[]).join(", "));
+  const [title, setTitle]   = useState(rice.title||"");
+  const [desc,  setDesc]    = useState(rice.description||"");
+  const [tags,  setTags]    = useState((rice.tags||[]).join(", "));
   const [saving, setSaving] = useState(false);
   const [msg, setMsg]       = useState("");
+
+  // image editing
+  const [coverUrl,  setCoverUrl]  = useState(rice.cover_url||"");
+  const [images,    setImages]    = useState(rice.images||[]);
+  const [newImgFiles, setNewImgFiles] = useState([]);   // File objects to upload
+  const [newImgPreviews, setNewImgPreviews] = useState([]); // preview URLs
+  const [uploadingImgs, setUploadingImgs] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleAddImages = (e) => {
+    const files = Array.from(e.target.files||[]);
+    if (!files.length) return;
+    const previews = files.map(f => URL.createObjectURL(f));
+    setNewImgFiles(prev => [...prev, ...files]);
+    setNewImgPreviews(prev => [...prev, ...previews]);
+  };
+
+  const removeExistingImg = (url) => {
+    setImages(prev => prev.filter(u => u !== url));
+    if (coverUrl === url) setCoverUrl(images.filter(u => u !== url)[0] || "");
+  };
+
+  const removeNewImg = (idx) => {
+    setNewImgFiles(prev => prev.filter((_,i)=>i!==idx));
+    setNewImgPreviews(prev => prev.filter((_,i)=>i!==idx));
+  };
 
   const save = async () => {
     setSaving(true);
     const { supabase } = await import('../lib/supabase');
     const newTags = tags.split(",").map(t=>t.trim().toLowerCase().replace(/^#+/,"")).filter(Boolean);
+
+    // Upload new images if any
+    setUploadingImgs(true);
+    const uploadedUrls = [...images];
+    for (const file of newImgFiles) {
+      const path = `${rice.author_id}/${rice.id}/edit/${Date.now()}_${file.name}`;
+      const { error: upErr } = await supabase.storage.from('rice-files').upload(path, file, { upsert:true });
+      if (!upErr) {
+        const { data: pub } = supabase.storage.from('rice-files').getPublicUrl(path);
+        if (pub?.publicUrl) uploadedUrls.push(pub.publicUrl);
+      }
+    }
+    setUploadingImgs(false);
+
+    // Determine cover: if current coverUrl is still valid use it, else first image
+    const finalCover = uploadedUrls.includes(coverUrl) ? coverUrl : (uploadedUrls[0] || null);
+
     const { error } = await supabase.from('rice').update({
-      title: title.trim(), description: desc.trim(), tags: newTags,
+      title:       title.trim(),
+      description: desc.trim(),
+      tags:        newTags,
+      images:      uploadedUrls,
+      cover_url:   finalCover,
     }).eq('id', rice.id);
     setSaving(false);
     if (error) { setMsg("✗ error — check console"); return; }
     setMsg("✓ saved! reload to see changes.");
-    setTimeout(onClose, 1600);
+    setTimeout(onClose, 1800);
   };
 
+  const allPreviews = [
+    ...images.map(url=>({ url, isNew:false })),
+    ...newImgPreviews.map((url,i)=>({ url, isNew:true, idx:i })),
+  ];
+
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ background:C.bgDeep, border:`1px solid ${C.borderHi}`, padding:28, maxWidth:520, width:"100%", fontFamily:C.mono, animation:"fadeUp .2s ease" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20, overflowY:"auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.bgDeep, border:`1px solid ${C.borderHi}`, padding:28, maxWidth:560, width:"100%", fontFamily:C.mono, animation:"fadeUp .2s ease" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <div style={{ fontSize:13, color:C.fn, fontWeight:600 }}>✏ edit rice</div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:C.gray2, cursor:"pointer", fontSize:18, lineHeight:1, padding:0 }}>✕</button>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+          {/* ── IMAGES SECTION */}
+          <div>
+            <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:8 }}>// IMAGES & COVER</div>
+            {allPreviews.length > 0 && (
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:10 }}>
+                {allPreviews.map((item, i) => (
+                  <div key={i} style={{ position:"relative", width:90, flexShrink:0 }}>
+                    <img
+                      src={item.url}
+                      alt=""
+                      onClick={()=>{ if(!item.isNew) setCoverUrl(item.url); }}
+                      style={{
+                        width:90, height:56, objectFit:"cover", display:"block",
+                        border: (!item.isNew && coverUrl===item.url)
+                          ? `2px solid ${C.fn}` : `1px solid ${C.border}`,
+                        cursor: item.isNew ? "default" : "pointer",
+                        opacity: item.isNew ? 0.7 : 1,
+                        transition:"border-color .15s",
+                      }}
+                    />
+                    {!item.isNew && coverUrl===item.url && (
+                      <div style={{ position:"absolute", top:2, left:2, fontSize:8, background:C.fn, color:"#000", padding:"1px 4px", fontWeight:700 }}>COVER</div>
+                    )}
+                    {item.isNew && (
+                      <div style={{ position:"absolute", top:2, left:2, fontSize:8, background:C.kw, color:"#fff", padding:"1px 4px" }}>NEW</div>
+                    )}
+                    <button
+                      onClick={()=> item.isNew ? removeNewImg(item.idx) : removeExistingImg(item.url)}
+                      style={{ position:"absolute", top:2, right:2, background:"rgba(0,0,0,0.7)", border:"none", color:"#f87171", cursor:"pointer", fontSize:11, lineHeight:1, padding:"1px 4px", borderRadius:2 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <button
+                onClick={()=>fileInputRef.current?.click()}
+                style={{ padding:"6px 14px", border:`1px solid ${C.border}`, background:C.bg, color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono, display:"flex", alignItems:"center", gap:5 }}>
+                ＋ add screenshots
+              </button>
+              {allPreviews.length > 0 && (
+                <span style={{ fontSize:9, color:C.gray3 }}>click an image to set as cover</span>
+              )}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleAddImages} style={{ display:"none" }}/>
+          </div>
+
+          {/* ── TITLE */}
           <div>
             <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:6 }}>// TITLE</div>
             <input value={title} onChange={e=>setTitle(e.target.value)} maxLength={80}
               style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:12, padding:"8px 10px", outline:"none", boxSizing:"border-box" }}/>
           </div>
+
+          {/* ── DESCRIPTION */}
           <div>
             <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:6 }}>// DESCRIPTION</div>
             <textarea value={desc} onChange={e=>setDesc(e.target.value)} maxLength={1000} rows={5}
               style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:11, padding:"8px 10px", resize:"vertical", outline:"none", boxSizing:"border-box" }}/>
           </div>
+
+          {/* ── TAGS */}
           <div>
             <div style={{ fontSize:9, color:C.gray3, letterSpacing:"0.08em", marginBottom:6 }}>// TAGS (comma separated)</div>
             <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="minimal, catppuccin, bar..."
               style={{ width:"100%", background:C.bg, border:`1px solid ${C.border}`, color:C.white, fontFamily:C.mono, fontSize:11, padding:"8px 10px", outline:"none", boxSizing:"border-box" }}/>
           </div>
         </div>
+
         {msg && <div style={{ marginTop:12, fontSize:11, color:msg.includes("✓")?C.fn:"#f87171", fontFamily:C.mono }}>{msg}</div>}
         <div style={{ display:"flex", justifyContent:"flex-end", gap:10, marginTop:20 }}>
           <button onClick={onClose} style={{ padding:"7px 18px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray2, cursor:"pointer", fontSize:10, fontFamily:C.mono }}>cancel</button>
           <button onClick={save} disabled={saving} style={{ padding:"7px 18px", border:`1px solid ${C.fn}66`, background:`${C.fn}11`, color:C.fn, cursor:"pointer", fontSize:10, fontFamily:C.mono, fontWeight:600, opacity:saving?0.6:1 }}>
-            {saving ? "saving..." : "save changes →"}
+            {saving ? (uploadingImgs ? "uploading..." : "saving...") : "save changes →"}
           </button>
         </div>
       </div>
@@ -851,7 +956,10 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
   const [tab, setTab]       = useState("description");
   const [copied, setCopied] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const cmd = `curl -fsSL riceshare.dev/install/${rice.author}/${rice.slug} | bash`;
+  const deps = rice.deps && rice.deps.length > 0 ? rice.deps : [];
+  const cmd = deps.length > 0
+    ? `yay -S --needed ${deps.join(' ')}`
+    : `# no deps listed for this rice`;
   const copy = () => {
     navigator.clipboard?.writeText(cmd).catch(()=>{});
     setCopied(true);
@@ -2459,49 +2567,64 @@ function Navbar({ page, setPage, isAdmin, navUnread, onSearch }) {
           {!isMobile && (() => {
             const searchExpanded = searchOpen || searchVal.length > 0;
             return (
-              <div style={{ display:"flex", alignItems:"center", marginRight:10, position:"relative" }}>
+              <div style={{ display:"flex", alignItems:"center", marginRight:10, position:"relative" }}
+                onClick={()=>{ if(!searchExpanded){ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); } }}
+              >
                 <div style={{
-                  display:"flex", alignItems:"center", gap:0,
-                  height:30,
-                  width: searchExpanded ? 220 : 90,
-                  transition:"width 0.28s cubic-bezier(.4,0,.2,1), border-color 0.15s, box-shadow 0.15s",
-                  background: searchExpanded ? "#141414" : C.bgDeep,
-                  border:`1px solid ${searchExpanded ? C.fn+"77" : C.border}`,
-                  boxShadow: searchExpanded ? `0 0 0 2px ${C.fn}18` : "none",
+                  display:"flex", alignItems:"center",
+                  height:32,
+                  width: searchExpanded ? 240 : 110,
+                  transition:"width 0.3s cubic-bezier(.4,0,.2,1), border-color 0.2s, box-shadow 0.2s, background 0.2s",
+                  background: searchExpanded ? "#1a1a1a" : C.bgDeep,
+                  border:`1px solid ${searchExpanded ? C.fn+"99" : C.border}`,
+                  borderRadius:6,
+                  boxShadow: searchExpanded ? `0 0 0 2px ${C.fn}22, 0 2px 8px #0006` : "none",
                   overflow:"hidden",
                   cursor: searchExpanded ? "text" : "pointer",
                 }}>
-                  <span
-                    onClick={()=>{ if(!searchExpanded){ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); } }}
-                    style={{ fontSize:15, lineHeight:1, color: searchExpanded ? C.fn : C.gray3, paddingLeft:10, paddingRight:7, flexShrink:0, userSelect:"none", transition:"color .15s" }}>⌕</span>
+                  <span style={{
+                    fontSize:15, lineHeight:1,
+                    color: searchExpanded ? C.fn : C.gray3,
+                    paddingLeft:9, paddingRight:5,
+                    flexShrink:0, userSelect:"none",
+                    transition:"color .2s"
+                  }}>⌕</span>
                   <input
                     id="nb-search"
                     value={searchVal}
                     onChange={e=>setSearchVal(e.target.value)}
                     onFocus={()=>setSearchOpen(true)}
-                    onBlur={()=>{ if(!searchVal) setSearchOpen(false); }}
+                    onBlur={()=>{ setTimeout(()=>{ if(!searchVal) setSearchOpen(false); }, 150); }}
                     onKeyDown={e=>{
-                      if(e.key==="Enter" && searchVal.trim()){ onSearch(searchVal.trim()); setSearchOpen(false); setSearchVal(""); }
+                      if(e.key==="Enter" && searchVal.trim()){ onSearch(searchVal.trim()); setSearchOpen(false); setSearchVal(""); e.target.blur(); }
                       if(e.key==="Escape"){ setSearchOpen(false); setSearchVal(""); e.target.blur(); }
                     }}
-                    placeholder="search rice & users"
+                    placeholder="search rice, users, tags.."
                     style={{
                       flex:1, background:"transparent", border:"none", outline:"none",
                       color:C.white, fontFamily:C.mono, fontSize:11,
-                      padding:"0 8px 0 0", height:"100%",
+                      padding:"0 6px 0 0", height:"100%",
                       opacity: searchExpanded ? 1 : 0,
-                      transition:"opacity 0.2s",
+                      transition:"opacity 0.25s",
                       pointerEvents: searchExpanded ? "all" : "none",
                     }}
                   />
                   {searchExpanded && searchVal && (
-                    <button onClick={()=>{ setSearchVal(""); setSearchOpen(false); }}
-                      style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:13, paddingRight:8, lineHeight:1, flexShrink:0 }}>✕</button>
+                    <button
+                      onMouseDown={e=>e.preventDefault()}
+                      onClick={e=>{ e.stopPropagation(); setSearchVal(""); document.getElementById("nb-search")?.focus(); }}
+                      style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:13, padding:"0 8px", lineHeight:1, flexShrink:0, transition:"color .15s" }}
+                      onMouseEnter={e=>e.target.style.color=C.white}
+                      onMouseLeave={e=>e.target.style.color=C.gray3}
+                    >✕</button>
                   )}
                   {!searchExpanded && (
-                    <span
-                      onClick={()=>{ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); }}
-                      style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, whiteSpace:"nowrap", paddingRight:10, cursor:"pointer", userSelect:"none", transition:"color .15s" }}>search</span>
+                    <span style={{
+                      fontSize:10, color:C.gray3, fontFamily:C.mono,
+                      whiteSpace:"nowrap", paddingRight:10,
+                      cursor:"pointer", userSelect:"none",
+                      letterSpacing:"0.04em"
+                    }}>search...</span>
                   )}
                 </div>
               </div>
@@ -4402,10 +4525,10 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
       for (const img of rice.images) {
         const path = `${user.id}/${makeSlug()}/images/${img.name}`;
         const { error: imgErr } = await supabase.storage
-          .from('rice-filess')
+          .from('rice-files')
           .upload(path, img, { upsert:true });
         if (!imgErr) {
-          const { data: pub } = supabase.storage.from('rice-filess').getPublicUrl(path);
+          const { data: pub } = supabase.storage.from('rice-files').getPublicUrl(path);
           if (pub?.publicUrl) uploadedImageUrls.push(pub.publicUrl);
         } else {
           console.warn('Image upload skip:', imgErr.message);
@@ -4420,7 +4543,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
       // Upload dotfiles su Storage (richiede bucket "rice-filess" in Supabase)
       for (const files of filess) {
         const { error: upErr } = await supabase.storage
-          .from('rice-filess')
+          .from('rice-files')
           .upload(`${user.id}/${makeSlug()}/${files.name}`, files, { upsert:true });
         if (upErr) console.warn('Storage skip:', upErr.message);
       }
