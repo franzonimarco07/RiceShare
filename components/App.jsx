@@ -469,8 +469,8 @@ function ShareButton({ rice }) {
   const [copied, setCopied] = useState(false);
   const btnRef = useRef(null);
 
-  const url     = `https://riceshare.dev/rice/${rice.author}/${rice.slug}`;
-  const cmdText = `curl -fsSL riceshare.dev/install/${rice.author}/${rice.slug} | bash`;
+  const url     = `https://rice-share.vercel.app/rice/${rice.author}/${rice.slug}`;
+  const cmdText = `curl -fsSL rice-share.vercel.app/install/${rice.author}/${rice.slug} | bash`;
 
   // Chiudi cliccando fuori
   useEffect(() => {
@@ -2929,7 +2929,7 @@ function DocsPage() {
         <Sec id="getting-started" n={1} title="Getting started">
           <P>Riceshare is a platform for sharing and installing Linux desktop configurations. A rice is a set of dotfiless that defines the look and feel of your desktop.</P>
           <P>To install any rice from the gallery, copy the command from the rice page and paste it into your terminal.</P>
-          <Cmd>curl -fsSL riceshare.dev/install/author/rice-name | bash</Cmd>
+          <Cmd>curl -fsSL rice-share.vercel.app/install/author/rice-name | bash</Cmd>
           <P>The script automatically detects your distro, installs dependencies, backs up existing configs and copies filess to the correct locations.</P>
           <Block>
             <div style={{color:C.gray3,fontStyle:"italic",marginBottom:8}}>// minimum requirements</div>
@@ -2993,7 +2993,7 @@ function DocsPage() {
         </Sec>
         <Sec id="api" n={4} title="API reference">
           <P>Riceshare exposes a public REST API. All endpoints are read-only and require no authentication.</P>
-          <Block><div style={{color:C.gray3,fontStyle:"italic",marginBottom:4}}>// base url</div><code style={{color:C.string}}>https://riceshare.dev/api/v1</code></Block>
+          <Block><div style={{color:C.gray3,fontStyle:"italic",marginBottom:4}}>// base url</div><code style={{color:C.string}}>https://rice-share.vercel.app/api/v1</code></Block>
           <div style={{marginBottom:20}}>
             <ApiRow method="GET" path="/rice"                    desc="list all rice — params: sort, wm, distro, limit"/>
             <ApiRow method="GET" path="/rice/:author/:slug"      desc="single rice detail"/>
@@ -4680,7 +4680,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
       .toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'').slice(0,80);
 
   const installCmd = rice.name
-    ? `curl -fsSL riceshare.dev/install/${user?.username||"user"}/${makeSlug()} | bash`
+    ? `curl -fsSL rice-share.vercel.app/install/${user?.username||"user"}/${makeSlug()} | bash`
     : "// fill the form to generate the command";
 
   const STEPS   = ["info","system","images","components","dependencies","files"];
