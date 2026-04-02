@@ -1083,23 +1083,21 @@ const scriptText = generateUniversalScript(deps, rice.author, rice.slug);
           <p style={{ fontSize:13, color:C.gray1, fontFamily:C.mono, lineHeight:2, margin:0, whiteSpace:"pre-wrap" }}>{rice.description||"// no description provided."}</p>
         </div>
       )}
-      {tab==="script" && (
-        <div style={{ background:C.bgDeep, border:`1px solid ${C.border}`, animation:"fadeIn .2s ease" }}>
-          <div style={{ padding:"6px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, display:"flex", justifyContent:"space-between" }}>
-            <span>install.sh</span><span style={{ color:C.fn }}>bash</span>
-          </div>
-          <div style={{ padding:"12px 16px", overflowX:"auto" }}>
-            {script.map((line,i)=>(
-              <div key={i} style={{ display:"flex", gap:14, lineHeight:1.9 }}>
-                <span style={{ fontSize:10, color:C.gray3, userSelect:"none", minWidth:18, textAlign:"right", flexShrink:0 }}>{line.k!=="blank"?i+1:""}</span>
-                <span style={{ fontSize:11, fontFamily:C.mono, color:lc(line.k), fontStyle:line.k==="comment"?"italic":"normal", whiteSpace:"nowrap" }}>
-                  {line.k==="comment"?<><span style={{color:C.gray3}}>// </span>{line.v}</>:line.v||" "}
-                </span>
-              </div>
-            ))}
-          </div>
+{tab==="script" && (
+  <div style={{ background:C.bgDeep, border:`1px solid ${C.border}`, animation:"fadeIn .2s ease" }}>
+    <div style={{ padding:"6px 14px", borderBottom:`1px solid ${C.border}`, fontSize:9, color:C.gray3, display:"flex", justifyContent:"space-between" }}>
+      <span>install.sh</span><span style={{ color:C.fn }}>bash · universal</span>
+    </div>
+    <div style={{ padding:"12px 16px", overflowX:"auto", maxHeight:320, overflowY:"auto" }}>
+      {scriptText.split('\n').map((line,i)=>(
+        <div key={i} style={{ display:"flex", gap:14, lineHeight:1.9 }}>
+          <span style={{ fontSize:10, color:C.gray3, userSelect:"none", minWidth:18, textAlign:"right", flexShrink:0 }}>{i+1}</span>
+          <span style={{ fontSize:11, fontFamily:C.mono, color:line.startsWith('#')?C.gray2:line.includes('echo')?C.string:C.gray1, whiteSpace:"pre" }}>{line||" "}</span>
         </div>
-      )}
+      ))}
+    </div>
+  </div>
+)}
       {tab==="files" && (
         <div style={{ background:C.bgDeep, border:`1px solid ${C.border}`, padding:"14px 16px", animation:"fadeIn .2s ease" }}>
           <div style={{ fontSize:10, color:C.gray3, fontStyle:"italic", marginBottom:12 }}>// tree ./{rice.slug}</div>
