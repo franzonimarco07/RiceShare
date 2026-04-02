@@ -2507,6 +2507,182 @@ function useMobile(breakpoint=640) {
   return mobile;
 }
 
+/* ── NavSearchBar with autocomplete ────────────────────────────── */
+function NavSearchBar({ searchVal, setSearchVal, searchOpen, setSearchOpen, searchExpanded, onSearch }) {
+  const [suggestions, setSuggestions]   = useState([]);
+  const [sugIdx, setSugIdx]             = useState(-1);
+  const [showSug, setShowSug]           = useState(false);
+  const debounceRef                     = useRef(null);
+
+  // Fetch suggestions with debounce
+  useEffect(()=>{
+    if (!searchVal.trim()) { setSuggestions([]); setShowSug(false); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async ()=>{
+      try {
+        const { supabase } = await import('../lib/supabase');
+        const q = searchVal.trim().toLowerCase();
+        const [{ data: riceData }, { data: userData }] = await Promise.all([
+          supabase.from('rice').select('id, title, wm, tags').ilike('title', `%${q}%`).limit(5),
+          supabase.from('users').select('id, username').ilike('username', `%${q}%`).limit(3),
+        ]);
+        const riceSugs = (riceData||[]).map(r=>({ type:'rice', label: r.title, sub: r.wm||'', id: r.id }));
+        const userSugs = (userData||[]).map(u=>({ type:'user', label: u.username, sub:'user', id: u.id }));
+        // Tag suggestions from rice tags
+        const tagSet = new Set();
+        (riceData||[]).forEach(r=>{ if(Array.isArray(r.tags)) r.tags.filter(t=>t.toLowerCase().includes(q)).forEach(t=>tagSet.add(t)); });
+        const tagSugs = [...tagSet].slice(0,3).map(t=>({ type:'tag', label: t, sub:'tag', id: t }));
+        setSuggestions([...riceSugs, ...userSugs, ...tagSugs]);
+        setShowSug(true);
+        setSugIdx(-1);
+      } catch(e) { console.error('autocomplete error:', e); }
+    }, 200);
+    return ()=>clearTimeout(debounceRef.current);
+  }, [searchVal]);
+
+  const commit = (val) => {
+    const q = val || searchVal.trim();
+    if (!q) return;
+    onSearch(q);
+    setSearchOpen(false);
+    setSearchVal("");
+    setShowSug(false);
+    setSugIdx(-1);
+    document.getElementById("nb-search")?.blur();
+  };
+
+  const TypeIcon = ({ type }) => {
+    if (type === 'rice') return (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{flexShrink:0,opacity:.85}}>
+        <ellipse cx="12" cy="12" rx="4" ry="7" fill="#c8a96e" transform="rotate(-30 12 12)"/>
+        <ellipse cx="12" cy="12" rx="2.5" ry="5" fill="#e8c98e" transform="rotate(-30 12 12)"/>
+        <path d="M12 5 Q14 2 17 3" stroke="#7a9a7a" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+      </svg>
+    );
+    if (type === 'user') return (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{flexShrink:0,opacity:.85}}>
+        <circle cx="12" cy="8" r="4" fill="#7a9a7a"/>
+        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="#7a9a7a" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      </svg>
+    );
+    if (type === 'tag') return (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{flexShrink:0,opacity:.85}}>
+        <path d="M3 7h18M3 12h12M3 17h8" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+    );
+    return <span style={{fontSize:10,opacity:.6}}>·</span>;
+  };
+
+  return (
+    <div style={{ display:"flex", alignItems:"center", marginRight:10, position:"relative" }}
+      onClick={()=>{ if(!searchExpanded){ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); } }}
+    >
+      {/* Input bar */}
+      <div style={{
+        display:"flex", alignItems:"center",
+        height:32,
+        width: searchExpanded ? 260 : 110,
+        transition:"width 0.3s cubic-bezier(.4,0,.2,1), border-color 0.2s, box-shadow 0.2s, background 0.2s",
+        background: searchExpanded ? "#1a1a1a" : C.bgDeep,
+        border:`1px solid ${searchExpanded ? C.fn+"aa" : C.border}`,
+        borderRadius: showSug && suggestions.length > 0 ? "6px 6px 0 0" : 6,
+        boxShadow: searchExpanded ? `0 0 0 2px ${C.fn}22, 0 2px 12px #0008` : "none",
+        overflow:"hidden",
+        cursor: searchExpanded ? "text" : "pointer",
+        position:"relative", zIndex:1001,
+      }}>
+        <span style={{
+          fontSize:15, lineHeight:1,
+          color: searchExpanded ? C.fn : C.gray3,
+          paddingLeft:9, paddingRight:5,
+          flexShrink:0, userSelect:"none",
+          transition:"color .2s"
+        }}>⌕</span>
+        <input
+          id="nb-search"
+          value={searchVal}
+          onChange={e=>setSearchVal(e.target.value)}
+          onFocus={()=>{ setSearchOpen(true); if(searchVal) setShowSug(true); }}
+          onBlur={()=>{ setTimeout(()=>{ setShowSug(false); if(!searchVal) setSearchOpen(false); }, 160); }}
+          onKeyDown={e=>{
+            if(e.key==="ArrowDown"){ e.preventDefault(); setSugIdx(i=>Math.min(i+1, suggestions.length-1)); }
+            if(e.key==="ArrowUp"){ e.preventDefault(); setSugIdx(i=>Math.max(i-1,-1)); }
+            if(e.key==="Enter"){
+              e.preventDefault();
+              if(sugIdx>=0 && suggestions[sugIdx]) commit(suggestions[sugIdx].label);
+              else commit();
+            }
+            if(e.key==="Escape"){ setSearchOpen(false); setSearchVal(""); setShowSug(false); setSugIdx(-1); e.target.blur(); }
+          }}
+          placeholder={searchExpanded ? "rice, utenti, tag..." : ""}
+          style={{
+            flex:1, background:"transparent", border:"none", outline:"none",
+            color:C.white, fontFamily:C.mono, fontSize:11,
+            padding:"0 6px 0 0", height:"100%",
+            opacity: searchExpanded ? 1 : 0,
+            transition:"opacity 0.25s",
+            pointerEvents: searchExpanded ? "all" : "none",
+          }}
+        />
+        {searchExpanded && searchVal && (
+          <button
+            onMouseDown={e=>e.preventDefault()}
+            onClick={e=>{ e.stopPropagation(); setSearchVal(""); setSuggestions([]); setShowSug(false); document.getElementById("nb-search")?.focus(); }}
+            style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:13, padding:"0 8px", lineHeight:1, flexShrink:0, transition:"color .15s" }}
+            onMouseEnter={e=>e.target.style.color=C.white}
+            onMouseLeave={e=>e.target.style.color=C.gray3}
+          >✕</button>
+        )}
+        {!searchExpanded && (
+          <span style={{
+            fontSize:10, color:C.gray3, fontFamily:C.mono,
+            whiteSpace:"nowrap", paddingRight:10,
+            cursor:"pointer", userSelect:"none", letterSpacing:"0.04em"
+          }}>search...</span>
+        )}
+      </div>
+
+      {/* Autocomplete dropdown */}
+      {showSug && suggestions.length > 0 && (
+        <div style={{
+          position:"absolute", top:32, left:0, width:260,
+          background:"#1a1a1a",
+          border:`1px solid ${C.fn}66`,
+          borderTop:"none",
+          borderRadius:"0 0 6px 6px",
+          boxShadow:`0 8px 24px #0009`,
+          zIndex:1000,
+          overflow:"hidden",
+        }}>
+          {suggestions.map((s,i)=>(
+            <div key={i}
+              onMouseDown={e=>e.preventDefault()}
+              onClick={()=>commit(s.label)}
+              style={{
+                display:"flex", alignItems:"center", gap:8,
+                padding:"7px 12px",
+                cursor:"pointer",
+                background: i===sugIdx ? C.fn+"18" : "transparent",
+                borderBottom: i<suggestions.length-1 ? `1px solid ${C.border}` : "none",
+                transition:"background .1s",
+              }}
+              onMouseEnter={e=>{ setSugIdx(i); e.currentTarget.style.background=C.fn+"18"; }}
+              onMouseLeave={e=>{ if(sugIdx!==i) e.currentTarget.style.background="transparent"; }}
+            >
+              <TypeIcon type={s.type} />
+              <span style={{ fontSize:11, color:C.white, fontFamily:C.mono, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.label}</span>
+              <span style={{ fontSize:9, color:C.gray3, fontFamily:C.mono, flexShrink:0 }}>{s.sub}</span>
+            </div>
+          ))}
+          <div style={{ padding:"5px 12px", fontSize:9, color:C.gray3, fontFamily:C.mono, borderTop:`1px solid ${C.border}`, textAlign:"center" }}>
+            ↵ invio per cercare tutto
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Navbar({ page, setPage, isAdmin, navUnread, onSearch }) {
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -2563,71 +2739,16 @@ function Navbar({ page, setPage, isAdmin, navUnread, onSearch }) {
 
           <div style={{ flex:1 }}/>
 
-          {/* ── Animated search bar (desktop) */}
-          {!isMobile && (() => {
+          {/* ── Animated search bar with autocomplete (desktop) */}
+          {!isMobile && (()=>{
             const searchExpanded = searchOpen || searchVal.length > 0;
             return (
-              <div style={{ display:"flex", alignItems:"center", marginRight:10, position:"relative" }}
-                onClick={()=>{ if(!searchExpanded){ setSearchOpen(true); setTimeout(()=>document.getElementById("nb-search")?.focus(),50); } }}
-              >
-                <div style={{
-                  display:"flex", alignItems:"center",
-                  height:32,
-                  width: searchExpanded ? 240 : 110,
-                  transition:"width 0.3s cubic-bezier(.4,0,.2,1), border-color 0.2s, box-shadow 0.2s, background 0.2s",
-                  background: searchExpanded ? "#1a1a1a" : C.bgDeep,
-                  border:`1px solid ${searchExpanded ? C.fn+"99" : C.border}`,
-                  borderRadius:6,
-                  boxShadow: searchExpanded ? `0 0 0 2px ${C.fn}22, 0 2px 8px #0006` : "none",
-                  overflow:"hidden",
-                  cursor: searchExpanded ? "text" : "pointer",
-                }}>
-                  <span style={{
-                    fontSize:15, lineHeight:1,
-                    color: searchExpanded ? C.fn : C.gray3,
-                    paddingLeft:9, paddingRight:5,
-                    flexShrink:0, userSelect:"none",
-                    transition:"color .2s"
-                  }}>⌕</span>
-                  <input
-                    id="nb-search"
-                    value={searchVal}
-                    onChange={e=>setSearchVal(e.target.value)}
-                    onFocus={()=>setSearchOpen(true)}
-                    onBlur={()=>{ setTimeout(()=>{ if(!searchVal) setSearchOpen(false); }, 150); }}
-                    onKeyDown={e=>{
-                      if(e.key==="Enter" && searchVal.trim()){ onSearch(searchVal.trim()); setSearchOpen(false); setSearchVal(""); e.target.blur(); }
-                      if(e.key==="Escape"){ setSearchOpen(false); setSearchVal(""); e.target.blur(); }
-                    }}
-                    placeholder="search rice, users, tags.."
-                    style={{
-                      flex:1, background:"transparent", border:"none", outline:"none",
-                      color:C.white, fontFamily:C.mono, fontSize:11,
-                      padding:"0 6px 0 0", height:"100%",
-                      opacity: searchExpanded ? 1 : 0,
-                      transition:"opacity 0.25s",
-                      pointerEvents: searchExpanded ? "all" : "none",
-                    }}
-                  />
-                  {searchExpanded && searchVal && (
-                    <button
-                      onMouseDown={e=>e.preventDefault()}
-                      onClick={e=>{ e.stopPropagation(); setSearchVal(""); document.getElementById("nb-search")?.focus(); }}
-                      style={{ background:"none", border:"none", color:C.gray3, cursor:"pointer", fontSize:13, padding:"0 8px", lineHeight:1, flexShrink:0, transition:"color .15s" }}
-                      onMouseEnter={e=>e.target.style.color=C.white}
-                      onMouseLeave={e=>e.target.style.color=C.gray3}
-                    >✕</button>
-                  )}
-                  {!searchExpanded && (
-                    <span style={{
-                      fontSize:10, color:C.gray3, fontFamily:C.mono,
-                      whiteSpace:"nowrap", paddingRight:10,
-                      cursor:"pointer", userSelect:"none",
-                      letterSpacing:"0.04em"
-                    }}>search...</span>
-                  )}
-                </div>
-              </div>
+              <NavSearchBar
+                searchVal={searchVal} setSearchVal={setSearchVal}
+                searchOpen={searchOpen} setSearchOpen={setSearchOpen}
+                searchExpanded={searchExpanded}
+                onSearch={onSearch}
+              />
             );
           })()}
 
@@ -3333,39 +3454,59 @@ function PublicProfilesPage({ author, onBack, onSelectRice }) {
 }
 
 /* ── DELETE RICE BUTTON ─────────────────────────────────────────── */
-function DeleteRiceButton({ riceId, onDeleted }) {
+function DeleteRiceButton({ riceId, riceName, onDeleted }) {
   const [confirm, setConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState("");
 
   const handleDelete = async () => {
-    setLoading(true);
+    setLoading(true); setErr("");
     try {
       const { supabase } = await import('../lib/supabase');
+      await supabase.from('rice_likes').delete().eq('rice_id', riceId);
+      await supabase.from('comments').delete().eq('rice_id', riceId);
       const { error } = await supabase.from('rice').delete().eq('id', riceId);
       if (error) throw new Error(error.message);
       onDeleted();
     } catch(e) {
-      console.error('delete error:', e.message);
+      setErr(e.message);
       setLoading(false);
-      setConfirm(false);
     }
   };
 
-  if (confirm) return (
-    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-      <span style={{ fontSize:9, color:C.string, fontFamily:C.mono, fontStyle:"italic" }}>sure?</span>
-      <button onClick={handleDelete} disabled={loading} style={{ fontSize:9, fontFamily:C.mono, padding:"2px 8px", border:`1px solid #a0585844`, background:"#a0585814", color:"#c07070", cursor:"pointer" }}>
-        {loading ? "..." : "yes"}
-      </button>
-      <button onClick={()=>setConfirm(false)} style={{ fontSize:9, fontFamily:C.mono, padding:"2px 8px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer" }}>no</button>
-    </div>
-  );
-
   return (
-    <button onClick={()=>setConfirm(true)} style={{ fontSize:9, fontFamily:C.mono, padding:"2px 8px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", transition:"all .15s" }}
-      onMouseEnter={e=>{ e.currentTarget.style.borderColor="#a0585844"; e.currentTarget.style.color="#c07070"; }}
-      onMouseLeave={e=>{ e.currentTarget.style.borderColor=C.border; e.currentTarget.style.color=C.gray3; }}
-    >delete</button>
+    <>
+      <button onClick={()=>setConfirm(true)}
+        style={{ fontSize:9, fontFamily:C.mono, padding:"2px 8px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", transition:"all .15s", borderRadius:3 }}
+        onMouseEnter={e=>{ e.currentTarget.style.borderColor="#a0585866"; e.currentTarget.style.color="#c07070"; e.currentTarget.style.background="#c0707010"; }}
+        onMouseLeave={e=>{ e.currentTarget.style.borderColor=C.border; e.currentTarget.style.color=C.gray3; e.currentTarget.style.background="transparent"; }}
+      >🗑 delete</button>
+
+      {confirm && (
+        <div style={{ position:"fixed", inset:0, background:"#000b", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}
+          onClick={e=>{ if(e.target===e.currentTarget) setConfirm(false); }}>
+          <div style={{ background:C.bgCard, border:`1px solid #c0707044`, borderRadius:8, padding:"24px 28px", width:320, fontFamily:C.mono }}>
+            <div style={{ fontSize:13, color:"#c07070", fontWeight:700, marginBottom:10 }}>🗑 delete rice</div>
+            <div style={{ fontSize:11, color:C.gray2, marginBottom:18, lineHeight:1.6 }}>
+              sei sicuro di voler eliminare<br/>
+              <span style={{ color:C.white, fontWeight:600 }}>"{riceName || riceId}"</span>?<br/>
+              <span style={{ fontSize:10, color:C.gray3 }}>questa azione è irreversibile.</span>
+            </div>
+            {err && <div style={{ fontSize:10, color:"#c07070", marginBottom:10 }}>⚠ {err}</div>}
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button onClick={()=>{ setConfirm(false); setErr(""); }}
+                style={{ fontSize:11, fontFamily:C.mono, padding:"6px 16px", border:`1px solid ${C.border}`, background:"transparent", color:C.gray3, cursor:"pointer", borderRadius:4 }}>
+                annulla
+              </button>
+              <button onClick={handleDelete} disabled={loading}
+                style={{ fontSize:11, fontFamily:C.mono, padding:"6px 16px", border:`1px solid #c0707066`, background:"#c0707020", color:"#c07070", cursor:loading?"wait":"pointer", borderRadius:4, fontWeight:600 }}>
+                {loading ? "eliminazione..." : "elimina"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -3987,7 +4128,7 @@ function ProfilesPage({ onNav, onSelectRice, onClearNotifs }) {
                   <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <div style={{ fontSize:9, color:r.status==="approved"?C.fn:C.string, fontStyle:"italic" }}>// {r.status}</div>
-                    {!mobile && <DeleteRiceButton riceId={r.id} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
+                    {!mobile && <DeleteRiceButton riceId={r.id} riceName={r.title} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
                   </div>
                 </div>
               ))}
@@ -4086,7 +4227,7 @@ function ProfilesPage({ onNav, onSelectRice, onClearNotifs }) {
                   <div style={{ fontSize:9, color:C.gray2, marginBottom:mobile?4:6 }}>{r.wm}{r.distro?` · ${r.distro}`:""}</div>
                   <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <div style={{ fontSize:9, color:r.status==="approved"?C.fn:C.string, fontStyle:"italic" }}>// {r.status}</div>
-                    {!mobile && <DeleteRiceButton riceId={r.id} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
+                    {!mobile && <DeleteRiceButton riceId={r.id} riceName={r.title} onDeleted={()=>setRices(prev=>prev.filter(x=>x.id!==r.id))}/>}
                   </div>
                 </div>
               ))}
@@ -4132,10 +4273,45 @@ function ProfilesPage({ onNav, onSelectRice, onClearNotifs }) {
 
 /* ── ABOUT PAGE ──────────────────────────────────────────────────── */
 function AboutPage({ onNav, onProfiles }) {
-  const TEAM = [
-    { role:"founder, UX/UI designer & dev", name:"@marcolino",     bio:"graphic designer & ui/ux designer, likes to experiment with programming.", isFounder:true },
-    { role:"founder & creator",             name:"@andrei_chirva", bio:"obsessed with pixel-perfect interfaces. rose-pine forever.",               isFounder:true },
+  const TEAM_BASE = [
+    { role:"founder, UX/UI designer & dev", username:"marcolino",     isFounder:true },
+    { role:"founder & creator",             username:"andrei",         isFounder:true },
   ];
+  const [teamBios, setTeamBios] = useState({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { supabase } = await import('../lib/supabase');
+        const usernames = TEAM_BASE.map(m => m.username);
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .in('username', usernames);
+        console.log('[About] team fetch →', data, error);
+        if (data && data.length > 0) {
+          const map = {};
+          data.forEach(u => { map[u.username] = u; });
+          setTeamBios(map);
+        } else if (data && data.length === 0) {
+          // fallback: prova con ilike (case-insensitive)
+          const results = await Promise.all(
+            usernames.map(u => supabase.from('users').select('*').ilike('username', u).single())
+          );
+          const map = {};
+          results.forEach(({ data: u }) => { if (u) map[u.username] = u; });
+          console.log('[About] fallback ilike →', map);
+          setTeamBios(map);
+        }
+      } catch(e) { console.error('[About] team bio fetch failed', e); }
+    })();
+  }, []);
+
+  const TEAM = TEAM_BASE.map(m => ({
+    ...m,
+    name: '@' + m.username,
+    bio: teamBios[m.username]?.bio ?? null,
+  }));
   const VALUES = [
     { k:"community first", v:"product decisions come from the community. discord is where everything happens." },
     { k:"quality",         v:"every rice is reviewed before appearing in the gallery. we prefer fewer good rice over many mediocre ones." },
@@ -4204,7 +4380,10 @@ function AboutPage({ onNav, onProfiles }) {
                   {m.isFounder && <FounderBadge/>}
                 </div>
                 <div style={{ fontSize:10, color:C.gray3, fontFamily:C.mono, marginBottom:10, letterSpacing:"0.04em" }}>{m.role}</div>
-                <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{m.bio}</div>
+                {m.bio
+                  ? <div style={{ fontSize:11, color:C.gray2, fontFamily:C.mono, lineHeight:1.9 }}>{m.bio}</div>
+                  : <div style={{ fontSize:11, color:C.gray3, fontFamily:C.mono, lineHeight:1.9, fontStyle:"italic" }}>no bio yet.</div>
+                }
               </div>
             ))}
           </div>
