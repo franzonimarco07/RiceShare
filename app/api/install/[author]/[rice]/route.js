@@ -1,10 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY  // ← non la service role key
-);
-
 const PKG_MAP = {
   "ttf-ibm-plex":  { apt:"fonts-ibm-plex",           dnf:"ibm-plex-fonts",  pacman:"ttf-ibm-plex"  },
   "nerd-fonts":    { apt:"fonts-nerd-fonts-complete", dnf:"nerd-fonts",      pacman:"nerd-fonts"    },
@@ -19,7 +14,6 @@ const PKG_MAP = {
   "alacritty":     { apt:"alacritty",                 dnf:"alacritty",       pacman:"alacritty"     },
   "hyprland":      { apt:"hyprland",                  dnf:"hyprland",        pacman:"hyprland"      },
   "sway":          { apt:"sway",                      dnf:"sway",            pacman:"sway"          },
-  "waybar":        { apt:"waybar",                    dnf:"waybar",          pacman:"waybar"        },
   "neovim":        { apt:"neovim",                    dnf:"neovim",          pacman:"neovim"        },
   "tmux":          { apt:"tmux",                      dnf:"tmux",            pacman:"tmux"          },
   "fzf":           { apt:"fzf",                       dnf:"fzf",             pacman:"fzf"           },
@@ -30,10 +24,17 @@ const PKG_MAP = {
   "bat":           { apt:"bat",                       dnf:"bat",             pacman:"bat"           },
 };
 
-export async function GET(request, { params }) {
-  const { author, slug } = params;
+export const dynamic = 'force-dynamic';
 
-  // Fetch rice dal DB
+export async function GET(request, { params }) {
+  const { author, rice: slug } = params;
+
+  // Crea il client DENTRO la funzione, non a livello di modulo
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+
   const { data: rice, error } = await supabase
     .from('rice')
     .select('*, users(username)')
@@ -42,14 +43,16 @@ export async function GET(request, { params }) {
     .single();
 
   if (error || !rice) {
-    return new Response(`#!/usr/bin/env bash\necho "// error: rice '${slug}' not found"\nexit 1\n`, {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain' },
-    });
+    return new Response(
+      `#!/usr/bin/env bash\necho "// error: rice '${slug}' not found"\nexit 1\n`,
+      { status: 404, headers: { 'Content-Type': 'text/plain' } }
+    );
   }
 
   const deps = rice.deps || [];
-  const pkgFor = (pm) => deps.map(d => PKG_MAP[d]?.[pm] || d).join(' ');
+  const pkgFor = (pm) => deps.length > 0
+    ? deps.map(d => PKG_MAP[d]?.[pm] || d).join(' ')
+    : '# no deps';
   const BASE = 'https://rice-share.vercel.app';
 
   const script = `#!/usr/bin/env bash
@@ -82,9 +85,6 @@ else
   echo "// error: unsupported package manager"; exit 1
 fi
 
-# // increment install counter
-curl -fsSL -X POST "${BASE}/api/rice/${rice.id}/install" &>/dev/null &
-
 # // backup existing config
 BACKUP=~/.rice-backup-\$(date +%s)
 mkdir -p "\$BACKUP"
@@ -103,11 +103,13 @@ rm -rf "\$TMP"
 echo -e "\\n\${GREEN}// done! restart your session to apply the rice.\${NC}\\n"
 `;
 
-  // Aggiorna contatore installs
-  await supabase
+  // Aggiorna contatore installs (non bloccante)
+  supabase
     .from('rice')
     .update({ installs: (rice.installs || 0) + 1 })
-    .eq('id', rice.id);
+    .eq('id', rice.id)
+    .then(() => {})
+    .catch(() => {});
 
   return new Response(script, {
     status: 200,
