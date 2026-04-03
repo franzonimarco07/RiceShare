@@ -27,7 +27,7 @@ const PKG_MAP = {
 export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
-  const { author, rice: slug } = params;
+  const { author, slug } = params;
 
   // Crea il client DENTRO la funzione, non a livello di modulo
   const supabase = createClient(
