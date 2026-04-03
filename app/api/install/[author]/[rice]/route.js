@@ -27,7 +27,7 @@ const PKG_MAP = {
 export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
-  const { author, slug } = params;
+  const { author, rice: slug } = await params;
   
   console.log('params:', params);
   console.log('author:', author, 'slug:', slug);
