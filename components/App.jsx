@@ -550,7 +550,7 @@ function ShareButton({ rice }) {
   const btnRef = useRef(null);
 
   const url     = `https://rice-share.vercel.app/rice/${rice.author}/${rice.slug}`;
-  const cmdText = `curl -fsSL rice-share.vercel.app/install/${rice.author}/${rice.slug} | bash`;
+  const cmdText = `curl -fsSL rice-share.vercel.app/api/install/${rice.author}/${rice.slug} | bash`;
 
   // Chiudi cliccando fuori
   useEffect(() => {
@@ -1038,7 +1038,7 @@ function DetailPage({ rice, onBack, onProfiles, currentUser, userBadge, onTagCli
   const [editOpen, setEditOpen] = useState(false);
   const deps = rice.deps && rice.deps.length > 0 ? rice.deps : [];
   const cmd = deps.length > 0
-  ? `bash <(curl -fsSL rice-share.vercel.app/install/${rice.author}/${rice.slug})`
+  ? `bash <(curl -fsSL rice-share.vercel.app/api/install/${rice.author}/${rice.slug})`
   : `# no deps listed for this rice`;
 const scriptText = generateUniversalScript(deps, rice.author, rice.slug);
   const copy = () => {
