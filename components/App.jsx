@@ -140,7 +140,13 @@ echo -e "\${DIM}// backup saved to \$BACKUP\${NC}"
 # // download and apply dotfiles
 TMP=\$(mktemp -d)
 curl -fsSL "https://rice-share.vercel.app/api/v1/rice/${riceAuthor}/${riceSlug}/download" -o "\$TMP/rice.zip"
-unzip -q "\$TMP/rice.zip" -d "\$TMP"
+if command -v bsdtar &>/dev/null; then
+  bsdtar -xf "\$TMP/rice.zip" -C "\$TMP"
+elif command -v unzip &>/dev/null; then
+  unzip -q "\$TMP/rice.zip" -d "\$TMP"
+else
+  python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "\$TMP/rice.zip" "\$TMP"
+fi
 [ -d "\$TMP/dotfiles" ] && cp -r "\$TMP/dotfiles/." ~/.config/ 2>/dev/null || true
 [ -f "\$TMP/dotfiles/.zshrc" ]        && cp "\$TMP/dotfiles/.zshrc" ~/
 [ -f "\$TMP/dotfiles/wallpaper.png" ] && cp "\$TMP/dotfiles/wallpaper.png" ~/
@@ -4778,10 +4784,13 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
     try {
       const { supabase } = await import('../lib/supabase');
 
+      // Generate slug ONCE and reuse everywhere
+      const slug = makeSlug();
+
       // Upload images su Storage e raccogli URL pubblici
       const uploadedImageUrls = [...rice.imageUrls]; // parte dagli URL già inseriti
       for (const img of rice.images) {
-        const path = `${user.id}/${makeSlug()}/images/${img.name}`;
+        const path = `${user.id}/${slug}/images/${img.name}`;
         const { error: imgErr } = await supabase.storage
           .from('rice-files')
           .upload(path, img, { upsert:true });
@@ -4798,18 +4807,51 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
         ? allUrls[rice.coverIndex]
         : (allUrls[0] || null); // fallback alla prima immagine se nessuna stellina
 
-      // Upload dotfiles su Storage (richiede bucket "rice-filess" in Supabase)
-      for (const files of filess) {
-        const { error: upErr } = await supabase.storage
-          .from('rice-files')
-          .upload(`${user.id}/${makeSlug()}/${files.name}`, files, { upsert:true });
-        if (upErr) console.warn('Storage skip:', upErr.message);
+      // Upload dotfiles as a zip → the download endpoint expects dotfiles-riceshare.zip
+      if (filess.length > 0) {
+        let zipFile = null;
+        if (filess.length === 1 && filess[0].name.toLowerCase().endsWith('.zip')) {
+          // User already uploaded a zip — use it directly
+          zipFile = filess[0];
+        } else {
+          // Multiple files — bundle into a zip client-side using fflate (dynamic import)
+          try {
+            const fflate = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js');
+            const fileMap = {};
+            await Promise.all(filess.map(f => new Promise((res, rej) => {
+              const reader = new FileReader();
+              reader.onload = e => { fileMap[f.name] = new Uint8Array(e.target.result); res(); };
+              reader.onerror = rej;
+              reader.readAsArrayBuffer(f);
+            })));
+            const zipped = await new Promise((res, rej) =>
+              fflate.zip(fileMap, {}, (err, data) => err ? rej(err) : res(data))
+            );
+            zipFile = new File([zipped], 'dotfiles-riceshare.zip', { type: 'application/zip' });
+          } catch(zipErr) {
+            // fflate not available — upload files individually as fallback
+            console.warn('fflate unavailable, uploading individually:', zipErr.message);
+            for (const f of filess) {
+              const { error: upErr } = await supabase.storage
+                .from('rice-files')
+                .upload(`${user.id}/${slug}/${f.name}`, f, { upsert:true });
+              if (upErr) console.warn('Storage skip:', upErr.message);
+            }
+            zipFile = null;
+          }
+        }
+        if (zipFile) {
+          const { error: upErr } = await supabase.storage
+            .from('rice-files')
+            .upload(`${user.id}/${slug}/dotfiles-riceshare.zip`, zipFile, { upsert:true });
+          if (upErr) console.warn('Dotfiles upload skip:', upErr.message);
+        }
       }
 
       // Inserisci rice nel database
       // author_id = user.id (Clerk) — author viene risolto via join in lettura
       const { error } = await supabase.from('rice').insert({
-        slug:        makeSlug(),
+        slug:        slug,
         author_id:   user.id,
         title:       rice.name,
         description: rice.description,
@@ -5227,7 +5269,7 @@ function UploadPage({ trustLevel=1, userBadge='member', onGoHome }) {
             <div style={{ display:"flex", flexDirection:"column", gap:16, animation:"fadeIn .2s ease" }}>
               <div style={{ fontSize:11, color:C.gray3, fontStyle:"italic", marginBottom:4 }}>// upload rice filess</div>
               <div style={{ padding:"10px 14px", border:`1px solid ${C.border}`, background:C.bgDeep, fontSize:11, fontFamily:C.mono, color:C.gray2, lineHeight:1.9, marginBottom:4 }}>
-                <div style={{marginBottom:4}}><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>upload your dotfiles — config folders, shell rc files, wallpaper, etc.</div>
+                <div style={{marginBottom:4}}><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>upload your dotfiles — zip preferred (e.g. <span style={{color:C.accent}}>dotfiles.zip</span>), or individual files</div>
                 <div><span style={{color:C.gray3,fontStyle:"italic"}}>// </span>The <span style={{color:C.fn}}>install.sh</span> script and <span style={{color:C.fn}}>meta.json</span> files are generated automatically. no need to include them.</div>
               </div>
               <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);addFiles(e.dataTransfer.files);}} onClick={()=>filesRef.current?.click()}

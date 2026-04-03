@@ -102,7 +102,15 @@ echo -e "\${DIM}// backup saved to \$BACKUP\${NC}"
 # // download and apply dotfiles
 TMP=\$(mktemp -d)
 curl -fsSL "${BASE}/api/v1/rice/${author}/${slug}/download" -o "\$TMP/rice.zip"
-unzip -q "\$TMP/rice.zip" -d "\$TMP"
+
+# // extract — use bsdtar (arch default), fallback to unzip, fallback to python3
+if command -v bsdtar &>/dev/null; then
+  bsdtar -xf "\$TMP/rice.zip" -C "\$TMP"
+elif command -v unzip &>/dev/null; then
+  unzip -q "\$TMP/rice.zip" -d "\$TMP"
+else
+  python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "\$TMP/rice.zip" "\$TMP"
+fi
 [ -d "\$TMP/dotfiles" ] && cp -r "\$TMP/dotfiles/." ~/.config/ 2>/dev/null || true
 [ -f "\$TMP/dotfiles/.zshrc" ]        && cp "\$TMP/dotfiles/.zshrc" ~/
 [ -f "\$TMP/dotfiles/wallpaper.png" ] && cp "\$TMP/dotfiles/wallpaper.png" ~/
