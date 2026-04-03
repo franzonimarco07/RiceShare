@@ -28,6 +28,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
   const { author, slug } = params;
+  
+  console.log('params:', params);
+  console.log('author:', author, 'slug:', slug);
 
   // Crea il client DENTRO la funzione, non a livello di modulo
   const supabase = createClient(
