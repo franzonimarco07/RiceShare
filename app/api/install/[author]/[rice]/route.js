@@ -70,8 +70,13 @@ echo -e "\${DIM}// ${author}/${slug}\\n\${NC}"
 # // detect package manager
 if   command -v pacman &>/dev/null; then
   echo -e "\${DIM}// arch-based distro detected\${NC}"
-  command -v yay &>/dev/null && AUR=yay || AUR=pacman
-  \$AUR -S --needed --noconfirm ${pkgFor('pacman')}
+  if command -v yay &>/dev/null; then
+    yay -S --needed --noconfirm ${pkgFor('pacman')}
+  elif command -v paru &>/dev/null; then
+    paru -S --needed --noconfirm ${pkgFor('pacman')}
+  else
+    sudo pacman -S --needed --noconfirm ${pkgFor('pacman')}
+  fi
 elif command -v apt &>/dev/null; then
   echo -e "\${DIM}// debian/ubuntu detected\${NC}"
   sudo apt update -qq && sudo apt install -y ${pkgFor('apt')}
